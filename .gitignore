@@ -1,0 +1,35 @@
+# Python cache
+__pycache__/
+*.py[oc]
+*.pyd
+
+# Build artifacts
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.myenv*/
+.python-version
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors/IDEs
+.vscode/
+.idea/
+
+# UV cache
+.uv-cache/
+
+# Backup files
+*.bak
+*~
