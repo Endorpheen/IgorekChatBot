@@ -42,3 +42,5 @@ Thumbs.db
 .refresh_jwt.sh 
 # Scripts containing secrets
 refresh_jwt.sh
+# History rewrite artifacts (sensitive)
+replacements.txt
