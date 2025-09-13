@@ -6,27 +6,69 @@ from rich.table import Table
 from rich.syntax import Syntax
 from rich.text import Text
 import argparse
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
+
 
 # Конфигурация
-MCP_URL = "MCP_URL_REMOVED"
 console = Console()
+MCP_URL = os.getenv("MCP_URL")
+if not MCP_URL:
+    console.print("[red]Переменная окружения MCP_URL не установлена.[/red]")
+    console.print("Добавьте MCP_URL в .env или экспортируйте её в окружение")
+    sys.exit(1)
 
 def rpc_call(method, params=None, _id=1):
+    token = os.getenv("AUTH_TOKEN")
+    if not token:
+        console.print("[red]Переменная окружения AUTH_TOKEN не установлена.[/red]")
+        console.print("Установите токен, например: export AUTH_TOKEN=ВАШ_ТОКЕН")
+        sys.exit(1)
+
     payload = {"jsonrpc": "2.0", "id": _id, "method": method}
     if params:
         payload["params"] = params
-    r = requests.post(MCP_URL, json=payload, headers={"Content-Type": "application/json"})
-    r.raise_for_status()
-    return r.json()
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+
+    try:
+        r = requests.post(MCP_URL, json=payload, headers=headers, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+    except requests.exceptions.RequestException as e:
+        console.print(f"[red]Сетевая ошибка: {e}[/red]")
+        sys.exit(1)
+    except ValueError:
+        console.print("[red]Ошибка парсинга JSON ответа[/red]")
+        sys.exit(1)
+
+    if "error" in data:
+        console.print(f"[red]RPC error: {data['error']}[/red]")
+        sys.exit(1)
+    if "result" not in data:
+        console.print("[red]Некорректный ответ сервера[/red]")
+        sys.exit(1)
+    return data
 
 def list_tools():
     resp = rpc_call("tools/list")
-    tools = resp["result"]["tools"]
+    tools = (resp.get("result", {}) or {}).get("tools") or []
+    if not tools:
+        console.print("[red]Инструменты не найдены[/red]")
+        return
     table = Table(title="MCP Tools")
     table.add_column("Name", style="cyan")
     table.add_column("Description", style="green")
     for t in tools:
-        table.add_row(t["name"], t["description"])
+        name = (t or {}).get("name") or "-"
+        desc = (t or {}).get("description") or "-"
+        table.add_row(name, desc)
     console.print(table)
 
 def list_notes():
@@ -34,14 +76,23 @@ def list_notes():
         "name": "search",
         "arguments": {"query": ""}
     })
-    results = resp["result"]["content"][0]["json"]["results"]
+    result = resp.get("result", {})
+    content_items = result.get("content") or []
+    results = []
+    if content_items and isinstance(content_items, list):
+        first = content_items[0]
+        if isinstance(first, dict):
+            json_obj = first.get("json") or {}
+            results = json_obj.get("results") or []
+
     if not results:
         console.print("[red]Нет заметок[/red]")
         return
     table = Table(title="Все заметки в vault")
     table.add_column("ID", style="yellow")
     for r in results:
-        table.add_row(r["id"])
+        note_id = r.get("id") or "-"
+        table.add_row(note_id)
     console.print(table)
 
 def search(query, since=None):
@@ -52,7 +103,15 @@ def search(query, since=None):
         "name": "search",
         "arguments": args
     })
-    results = resp["result"]["content"][0]["json"]["results"]
+    result = resp.get("result", {})
+    content_items = result.get("content") or []
+    results = []
+    if content_items and isinstance(content_items, list):
+        first = content_items[0]
+        if isinstance(first, dict):
+            json_obj = first.get("json") or {}
+            results = json_obj.get("results") or []
+
     if not results:
         console.print("[red]Ничего не найдено[/red]")
         return
@@ -64,11 +123,13 @@ def search(query, since=None):
     table.add_column("Snippet", style="white")
     table.add_column("Modified", style="cyan")
     for r in results:
-        snippet = Text(r["snippet"].replace("\n", " ")[:120] + "...")
+        snippet_text = (r.get("snippet") or "").replace("\n", " ")
+        snippet_text = (snippet_text[:120] + "...") if len(snippet_text) > 120 else snippet_text
+        snippet = Text(snippet_text)
         if query:
             snippet.highlight_words([query], style="bold yellow")
-        modified = r.get("modified", "-")
-        table.add_row(r["id"], snippet, modified)
+        modified = r.get("modified") or "-"
+        table.add_row(str(r.get("id") or "-"), snippet, modified)
     console.print(table)
 
 def fetch(note_id, save_path=None):
@@ -76,11 +137,21 @@ def fetch(note_id, save_path=None):
         "name": "fetch",
         "arguments": {"id": note_id}
     })
-    content = resp.get("result", {}).get("content", [])[0]["json"].get("content")
+    result = resp.get("result", {})
+    content_items = result.get("content") or []
+    content = None
+    if content_items and isinstance(content_items, list):
+        first = content_items[0]
+        if isinstance(first, dict):
+            json_obj = first.get("json") or {}
+            content = json_obj.get("content")
     if not content:
         console.print("[red]Файл не найден[/red]")
         return
     if save_path:
+        dir_name = os.path.dirname(save_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(content)
         console.print(f"[green]Заметка сохранена в {save_path}[/green]")
