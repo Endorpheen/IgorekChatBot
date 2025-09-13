@@ -15,6 +15,7 @@ venv/
 env/
 .myenv*/
 .python-version
+.env
 
 # Logs
 *.log
@@ -33,3 +34,11 @@ Thumbs.db
 # Backup files
 *.bak
 *~
+
+#For temp files
+.agent_notes/
+
+
+.refresh_jwt.sh 
+# Scripts containing secrets
+refresh_jwt.sh
