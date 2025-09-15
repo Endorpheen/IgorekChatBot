@@ -44,3 +44,13 @@ tasks:
     examples:
       - "uv run python mcp-cli.py ai-query \"Найди заметки о Docker и объясни основы\""
       - "uv run python mcp-cli.py ai-query \"Что я записал о настройке сервера?\""
+
+## Telegram Bot Integration
+
+Для использования Telegram как фронтенда:
+
+1. Создайте бота через @BotFather в Telegram, получите токен.
+2. Добавьте `TELEGRAM_BOT_TOKEN=<ваш_токен>` в `.env`.
+3. Запустите веб-сервер: `uvicorn telegram_bot:app --host 0.0.0.0 --port 8000`
+4. Настройте webhook: `curl https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-domain.com/webhook`
+5. Пишите сообщения боту — он будет отвечать через ai-query.
