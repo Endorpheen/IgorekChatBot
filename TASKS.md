@@ -30,3 +30,17 @@ tasks:
     usage: "uv run python mcp-cli.py fetch \"<ID>\" --save <файл>"
     examples:
       - "uv run python mcp-cli.py fetch \"Servers Setup/Matrix Synapse Server.md\" --save out.md"
+
+  - name: ask-llm
+    description: "Задать вопрос локальной LLM (qwen/qwen3-4b-2507)."
+    usage: "uv run python mcp-cli.py ask-llm \"<вопрос>\" [--context \"<ID заметки>\"]"
+    examples:
+      - "uv run python mcp-cli.py ask-llm \"Объясни концепцию Docker\""
+      - "uv run python mcp-cli.py ask-llm \"Что в этой заметке?\" --context \"My Notes/Important.md\""
+
+  - name: ai-query
+    description: "AI запрос с доступом к инструментам vault (поиск и получение заметок)."
+    usage: "uv run python mcp-cli.py ai-query \"<запрос>\""
+    examples:
+      - "uv run python mcp-cli.py ai-query \"Найди заметки о Docker и объясни основы\""
+      - "uv run python mcp-cli.py ai-query \"Что я записал о настройке сервера?\""

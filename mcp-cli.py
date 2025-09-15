@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import requests
 import sys
+import json
 from rich.console import Console
 from rich.table import Table
 from rich.syntax import Syntax
@@ -159,6 +160,164 @@ def fetch(note_id, save_path=None):
         syntax = Syntax(content, "markdown", theme="monokai", line_numbers=True)
         console.print(syntax)
 
+def ask_llm(prompt, context=None):
+    llm_url = "http://192.168.0.155:8010/v1/chat/completions"
+    messages = []
+    if context:
+        # Если контекст указан, получаем содержимое заметки
+        try:
+            resp = rpc_call("tools/call", {
+                "name": "fetch",
+                "arguments": {"id": context}
+            })
+            result = resp.get("result", {})
+            content_items = result.get("content") or []
+            ctx_content = None
+            if content_items and isinstance(content_items, list):
+                first = content_items[0]
+                if isinstance(first, dict):
+                    json_obj = first.get("json") or {}
+                    ctx_content = json_obj.get("content")
+            if ctx_content:
+                messages.append({"role": "system", "content": f"Контекст из заметки:\n{ctx_content}"})
+            else:
+                console.print("[yellow]Контекст не найден, игнорируем[/yellow]")
+        except:
+            console.print("[yellow]Ошибка получения контекста, игнорируем[/yellow]")
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
+        "model": "qwen/qwen3-4b-2507",
+        "messages": messages,
+        "max_tokens": 1000
+    }
+
+    try:
+        r = requests.post(llm_url, json=payload, timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        response_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        console.print(Syntax(response_text, "markdown", theme="monokai"))
+    except requests.exceptions.RequestException as e:
+        console.print(f"[red]Ошибка подключения к LLM: {e}[/red]")
+    except ValueError:
+        console.print("[red]Ошибка парсинга ответа LLM[/red]")
+
+def execute_tool(tool_name, arguments):
+    if tool_name == "search":
+        query = arguments.get("query", "")
+        since = arguments.get("since")
+        # Выполнить поиск
+        resp = rpc_call("tools/call", {
+            "name": "search",
+            "arguments": {"query": query, "since": since} if since else {"query": query}
+        })
+        result = resp.get("result", {})
+        content_items = result.get("content") or []
+        results = []
+        if content_items and isinstance(content_items, list):
+            first = content_items[0]
+            if isinstance(first, dict):
+                json_obj = first.get("json") or {}
+                results = json_obj.get("results") or []
+        return [{"id": r.get("id"), "snippet": r.get("snippet"), "modified": r.get("modified")} for r in results]
+    elif tool_name == "fetch":
+        note_id = arguments.get("id")
+        resp = rpc_call("tools/call", {
+            "name": "fetch",
+            "arguments": {"id": note_id}
+        })
+        result = resp.get("result", {})
+        content_items = result.get("content") or []
+        content = None
+        if content_items and isinstance(content_items, list):
+            first = content_items[0]
+            if isinstance(first, dict):
+                json_obj = first.get("json") or {}
+                content = json_obj.get("content")
+        return content
+    return "Tool not found"
+
+def ai_query(prompt):
+    llm_url = "http://192.168.0.155:8010/v1/chat/completions"
+    messages = [
+        {"role": "system", "content": "You are an AI assistant with access to tools for searching and fetching notes from a vault. Use the tools when needed to answer questions about the user's notes."},
+        {"role": "user", "content": prompt}
+    ]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search",
+                "description": "Search notes in vault",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"},
+                        "since": {"type": "string", "description": "Filter by time, e.g., 7d, 12h"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch",
+                "description": "Fetch note by id",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string", "description": "Note ID"}
+                    },
+                    "required": ["id"]
+                }
+            }
+        }
+    ]
+
+    while True:
+        payload = {
+            "model": "qwen/qwen3-4b-2507",
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto"
+        }
+
+        try:
+            r = requests.post(llm_url, json=payload, timeout=60)
+            r.raise_for_status()
+            data = r.json()
+            message = data.get("choices", [{}])[0].get("message", {})
+            content = message.get("content")
+            tool_calls = message.get("tool_calls")
+
+            if content:
+                console.print(Syntax(content, "markdown", theme="monokai"))
+
+            if not tool_calls:
+                break
+
+            messages.append(message)
+
+            for tool_call in tool_calls:
+                tool_name = tool_call["function"]["name"]
+                arguments = json.loads(tool_call["function"]["arguments"])
+                result = execute_tool(tool_name, arguments)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": json.dumps(result)
+                })
+
+        except requests.exceptions.RequestException as e:
+            console.print(f"[red]Ошибка подключения к LLM: {e}[/red]")
+            break
+        except ValueError:
+            console.print("[red]Ошибка парсинга ответа LLM[/red]")
+            break
+
 def main():
     parser = argparse.ArgumentParser(description="MCP Vault CLI")
     subparsers = parser.add_subparsers(dest="command")
@@ -174,6 +333,13 @@ def main():
     fetch_parser.add_argument("id")
     fetch_parser.add_argument("--save", help="Сохранить заметку в файл")
 
+    ask_parser = subparsers.add_parser("ask-llm")
+    ask_parser.add_argument("prompt", help="Вопрос для LLM")
+    ask_parser.add_argument("--context", help="ID заметки для контекста")
+
+    ai_parser = subparsers.add_parser("ai-query")
+    ai_parser.add_argument("query", help="Запрос к AI с доступом к инструментам vault")
+
     args = parser.parse_args()
 
     if args.command == "list":
@@ -184,6 +350,10 @@ def main():
         search(args.query, args.since)
     elif args.command == "fetch":
         fetch(args.id, args.save)
+    elif args.command == "ask-llm":
+        ask_llm(args.prompt, args.context)
+    elif args.command == "ai-query":
+        ai_query(args.query)
     else:
         parser.print_help()
 
