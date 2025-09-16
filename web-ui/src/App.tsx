@@ -31,7 +31,7 @@ const INITIAL_GREETING = `SYSTEM INITIALIZED...
 Welcome to Roo Control Terminal
 Ready for input...`;
 
-const COMMON_COMMANDS = ['/start', '/help', '/search', '/image'];
+const COMMON_COMMANDS = ['/help'];
 
 const buildApiUrl = (path: string): string => {
   const base = import.meta.env.VITE_AGENT_API_BASE ?? 'http://localhost:8018';
@@ -292,8 +292,16 @@ const App = () => {
     }
 
     if (isCommonCommand(trimmed)) {
-      if (trimmed === '/image') {
-        setIsAwaitingImageDescription(true);
+      if (trimmed === '/help') {
+        persistMessage({
+          type: 'bot',
+          contentType: 'text',
+          content: 'Roo - ваш ИИ-ассистент для выполнения задач и генерации изображений. Введите команду или запрос для взаимодействия.',
+          threadId,
+        });
+        setInput('');
+        setIsTyping(false);
+        return;
       }
 
       try {
@@ -391,6 +399,16 @@ const App = () => {
             <Power className="icon" />
           </button>
         </header>
+
+        <div className="telegram-banner">
+          <button
+            type="button"
+            className="telegram-button"
+            onClick={() => window.open('https://t.me/ezoneenews', '_blank')}
+          >
+            Подпишись на нас
+          </button>
+        </div>
 
         <div className="grid">
           <aside className="threads-panel">
