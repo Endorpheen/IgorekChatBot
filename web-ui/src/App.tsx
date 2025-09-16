@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, Copy, Check } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
@@ -116,6 +118,7 @@ const App = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [copiedCodeBlockId, setCopiedCodeBlockId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
 
@@ -240,6 +243,62 @@ const App = () => {
     } catch (error) {
       console.error('Failed to copy text:', error);
     }
+  };
+
+  const copyCodeToClipboard = async (code: string, codeBlockId: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeBlockId(codeBlockId);
+      setTimeout(() => setCopiedCodeBlockId(null), 2000); // Reset after 2 seconds
+    } catch (error) {
+      console.error('Failed to copy code:', error);
+    }
+  };
+
+  // Custom component for code blocks with syntax highlighting and copy functionality
+  const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+    const match = /language-(\w+)/.exec(className || '');
+    const language = match ? match[1] : '';
+    const code = String(children).replace(/\n$/, '');
+    const codeBlockId = useMemo(() => `code-${Math.random().toString(36).substr(2, 9)}`, []);
+
+    if (!inline && language) {
+      return (
+        <div className="code-block-container">
+          <div className="code-block-header">
+            <span className="code-language">{language}</span>
+            <button
+              className={`code-copy-button ${copiedCodeBlockId === codeBlockId ? 'copied' : ''}`}
+              onClick={() => copyCodeToClipboard(code, codeBlockId)}
+              type="button"
+              title="Копировать код"
+            >
+              {copiedCodeBlockId === codeBlockId ? <Check className="icon" /> : <Copy className="icon" />}
+            </button>
+          </div>
+          <SyntaxHighlighter
+            style={vscDarkPlus}
+            language={language}
+            PreTag="div"
+            customStyle={{
+              margin: 0,
+              borderRadius: '0 0 0.5rem 0.5rem',
+              fontSize: '0.9rem',
+            }}
+            {...props}
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      );
+    }
+
+    // For inline code or code without language specification
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
   };
 
   const persistMessage = (message: Omit<ChatMessage, 'id' | 'createdAt'>) => {
@@ -572,6 +631,7 @@ const App = () => {
                             <a {...props} target="_blank" rel="noopener noreferrer" />
                           ),
                           p: ({ children }) => <span className="chat-text">{children}</span>,
+                          code: CodeBlock,
                         }}
                       >
                         {msg.content}

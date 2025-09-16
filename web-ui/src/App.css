@@ -398,6 +398,58 @@
   background: rgba(0, 64, 0, 0.3);
 }
 
+/* Code block styles */
+.code-block-container {
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 255, 144, 0.2);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 64, 32, 0.6);
+  border-bottom: 1px solid rgba(0, 255, 144, 0.2);
+}
+
+.code-language {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(0, 255, 144, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-copy-button {
+  background: none;
+  border: none;
+  color: rgba(0, 255, 144, 0.6);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem;
+  border-radius: 0.3rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.code-copy-button:hover {
+  color: rgba(0, 255, 144, 0.9);
+  background: rgba(0, 255, 144, 0.1);
+  transform: scale(1.1);
+}
+
+.code-copy-button.copied {
+  color: rgba(144, 255, 144, 0.9);
+  background: rgba(0, 64, 0, 0.3);
+}
+
 .typing-indicator {
   display: inline-flex;
   align-items: center;
@@ -593,6 +645,19 @@
 
   .threads-list::-webkit-scrollbar {
     width: 6px;
+  }
+
+  .code-block-header {
+    padding: 0.4rem 0.8rem;
+  }
+
+  .code-language {
+    font-size: 0.75rem;
+  }
+
+  .code-copy-button {
+    font-size: 0.9rem;
+    padding: 0.2rem;
   }
 }
 
