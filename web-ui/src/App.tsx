@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Command, Power, Send, Terminal, Volume2 } from 'lucide-react';
+import { Command, Mic, Power, Send, Terminal, Volume2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -114,10 +114,45 @@ const App = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [isAwaitingImageDescription, setIsAwaitingImageDescription] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
 
   const agentUserId = useMemo(() => import.meta.env.VITE_TELEGRAM_USER_ID ?? 'local-user', []);
+
+  // Speech Recognition setup
+  const recognition = useMemo(() => {
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      const rec = new ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)();
+      rec.lang = 'ru-RU';
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.onstart = () => setIsRecording(true);
+      rec.onend = () => setIsRecording(false);
+      rec.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(prev => prev + ' ' + transcript);
+      };
+      rec.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+      };
+      return rec;
+    }
+    return null;
+  }, []);
+
+  const handleVoiceInput = () => {
+    if (!recognition) {
+      alert('Speech Recognition не поддерживается в этом браузере.');
+      return;
+    }
+    if (isRecording) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('roo_agent_messages', JSON.stringify(messages));
@@ -496,6 +531,15 @@ const App = () => {
                 onChange={(event) => setInput(event.target.value)}
                 disabled={isTyping}
               />
+              <button
+                type="button"
+                className={`voice-button ${isRecording ? 'recording' : ''}`}
+                onClick={handleVoiceInput}
+                disabled={isTyping}
+                title="Голосовой ввод"
+              >
+                <Mic className="icon" />
+              </button>
               <button type="submit" className="send-button" disabled={isTyping}>
                 <Send className="icon" />
                 Отправить
