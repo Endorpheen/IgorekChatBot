@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings } from 'lucide-react';
+import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -117,6 +117,21 @@ const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
   return stored === 'newest-first' ? 'newest-first' : 'oldest-first';
 });
 
+const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+const [openRouterEnabled, setOpenRouterEnabled] = useState(() => {
+  const stored = localStorage.getItem('roo_agent_openrouter_enabled');
+  return stored === 'true';
+});
+const [openRouterApiKey, setOpenRouterApiKey] = useState(() => {
+  return localStorage.getItem('roo_agent_openrouter_api_key') || '';
+});
+const [showApiKey, setShowApiKey] = useState(false);
+const [availableModels, setAvailableModels] = useState<string[]>([]);
+const [isLoadingModels, setIsLoadingModels] = useState(false);
+const [openRouterModel, setOpenRouterModel] = useState(() => {
+  return localStorage.getItem('roo_agent_openrouter_model') || 'openai/gpt-4o-mini';
+});
+
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -186,6 +201,26 @@ const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
   useEffect(() => {
     localStorage.setItem('roo_agent_thread_sort', threadSortOrder);
   }, [threadSortOrder]);
+
+  useEffect(() => {
+    localStorage.setItem('roo_agent_openrouter_enabled', openRouterEnabled.toString());
+  }, [openRouterEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('roo_agent_openrouter_api_key', openRouterApiKey);
+  }, [openRouterApiKey]);
+
+  useEffect(() => {
+    localStorage.setItem('roo_agent_openrouter_model', openRouterModel);
+  }, [openRouterModel]);
+
+  useEffect(() => {
+    if (openRouterApiKey && isSettingsOpen) {
+      loadAvailableModels();
+    } else if (!openRouterApiKey) {
+      setAvailableModels([]);
+    }
+  }, [openRouterApiKey, isSettingsOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -368,6 +403,72 @@ const toggleThreadSortOrder = () => {
   setThreadSortOrder((prev) => (prev === 'newest-first' ? 'oldest-first' : 'newest-first'));
 };
 
+const openSettings = () => {
+  setIsSettingsOpen(true);
+};
+
+const closeSettings = () => {
+  setIsSettingsOpen(false);
+};
+
+const loadAvailableModels = async () => {
+  if (!openRouterApiKey) {
+    setAvailableModels([]);
+    return;
+  }
+
+  setIsLoadingModels(true);
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: {
+        'Authorization': `Bearer ${openRouterApiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to load models: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const models = data.data
+      .sort((a: any, b: any) => {
+        // Сначала платные модели от известных провайдеров
+        const priorityOrder = ['openai', 'anthropic', 'google', 'microsoft', 'meta', 'mistral'];
+        const aPriority = priorityOrder.findIndex(p => a.id.includes(p));
+        const bPriority = priorityOrder.findIndex(p => b.id.includes(p));
+
+        // Модели с rate limits идут в конец
+        const aHasFree = a.id.includes('free') || a.id.includes('oss');
+        const bHasFree = b.id.includes('free') || b.id.includes('oss');
+
+        if (aHasFree && !bHasFree) return 1;
+        if (!aHasFree && bHasFree) return -1;
+
+        if (aPriority !== -1 && bPriority !== -1) {
+          return aPriority - bPriority;
+        } else if (aPriority !== -1) {
+          return -1;
+        } else if (bPriority !== -1) {
+          return 1;
+        }
+
+        return a.id.localeCompare(b.id);
+      })
+      .map((model: any) => model.id);
+
+    setAvailableModels(models);
+    if (models.length > 0 && !models.includes(openRouterModel)) {
+      setOpenRouterModel(models[0]);
+    }
+  } catch (error) {
+    console.error('Failed to load OpenRouter models:', error);
+    setAvailableModels([]);
+  } finally {
+    setIsLoadingModels(false);
+  }
+};
+
 
 
   // Custom component for code blocks with syntax highlighting and copy functionality
@@ -427,6 +528,87 @@ const toggleThreadSortOrder = () => {
     ]);
   };
 
+  const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[] }) => {
+    if (!openRouterApiKey) {
+      throw new Error('API ключ OpenRouter не указан');
+    }
+
+    let messages = [
+      ...payload.history?.map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      })) || [],
+      { role: 'user', content: payload.message }
+    ];
+
+    // Управление контекстом - ограничиваем количество сообщений для избежания превышения лимита
+    const MAX_HISTORY_LENGTH = 10; // Максимум 10 сообщений в истории
+    if (messages.length > MAX_HISTORY_LENGTH + 1) { // +1 для текущего сообщения
+      const userMessages = messages.filter(msg => msg.role === 'user');
+      const assistantMessages = messages.filter(msg => msg.role === 'assistant').slice(-MAX_HISTORY_LENGTH + 1);
+
+      // Сохраняем последние сообщения
+      messages = [
+        ...assistantMessages.slice(0, MAX_HISTORY_LENGTH),
+        ...userMessages.slice(-MAX_HISTORY_LENGTH)
+      ].sort((a, b) => {
+        // Сортируем по порядку: сначала assistant, затем user
+        if (a.role === 'assistant' && b.role === 'user') return -1;
+        if (a.role === 'user' && b.role === 'assistant') return 1;
+        return 0;
+      });
+
+      // Добавляем текущее сообщение
+      messages.push({ role: 'user', content: payload.message });
+    }
+
+    console.log('OpenRouter request:', {
+      model: openRouterModel,
+      messagesCount: messages.length,
+      lastMessage: messages[messages.length - 1]
+    });
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openRouterApiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Roo Control Terminal',
+      },
+      body: JSON.stringify({
+        model: openRouterModel,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
+
+    console.log('OpenRouter response status:', response.status);
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}`;
+      let errorDetails = '';
+      try {
+        const error = await response.json();
+        console.log('OpenRouter error response:', error);
+        errorMessage = error.error?.message || error.message || response.statusText;
+        errorDetails = JSON.stringify(error, null, 2);
+      } catch {
+        errorMessage = response.statusText;
+      }
+      console.error('OpenRouter API error details:', errorDetails);
+      throw new Error(`OpenRouter API error: ${errorMessage}`);
+    }
+
+    const data = await response.json();
+    return {
+      status: 'success',
+      response: data.choices[0]?.message?.content || 'Ответ не получен',
+      thread_id: payload.thread_id,
+    };
+  };
+
   const callAgent = async (payload: { message: string; thread_id?: string; history?: any[] }) => {
     const response = await fetch(buildApiUrl('/chat'), {
       method: 'POST',
@@ -481,7 +663,8 @@ const toggleThreadSortOrder = () => {
           content: msg.content
         }))
       };
-      const response = await callAgent(payloadWithHistory);
+      console.log('OpenRouter enabled:', openRouterEnabled, 'API key:', openRouterApiKey ? 'present' : 'missing');
+      const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
       persistMessage({
         type: 'bot',
         contentType: 'text',
@@ -490,12 +673,42 @@ const toggleThreadSortOrder = () => {
       });
     } catch (error) {
       console.error(error);
-      persistMessage({
-        type: 'bot',
-        contentType: 'text',
-        content: `Не удалось отправить сообщение: ${(error as Error).message}`,
-        threadId,
-      });
+      const errorMessage = (error as Error).message;
+
+      // Если это ошибка OpenRouter, rate limit или провайдера, и у нас включена облачная модель с API ключом, попробуем локальный агент
+      if (openRouterEnabled && openRouterApiKey && (errorMessage.includes('OpenRouter') || errorMessage.includes('Provider') || errorMessage.includes('429'))) {
+        try {
+          console.log('OpenRouter failed, falling back to local agent...');
+          const fallbackResponse = await callAgent(payload);
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: fallbackResponse.response ?? 'Бот ничего не ответил.',
+            threadId: fallbackResponse.thread_id ?? threadId,
+          });
+          // Добавляем уведомление о fallback
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: `⚠️ OpenRouter недоступен, использован локальный агент.`,
+            threadId,
+          });
+        } catch (fallbackError) {
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: `Не удалось отправить сообщение: ${(fallbackError as Error).message}`,
+            threadId,
+          });
+        }
+      } else {
+        persistMessage({
+          type: 'bot',
+          contentType: 'text',
+          content: `Не удалось отправить сообщение: ${errorMessage}`,
+          threadId,
+        });
+      }
     } finally {
       setIsTyping(false);
     }
@@ -542,7 +755,7 @@ const toggleThreadSortOrder = () => {
             content: msg.content
           }))
         };
-        const response = await callAgent(payloadWithHistory);
+        const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
         persistMessage({
           type: 'bot',
           contentType: 'text',
@@ -599,7 +812,7 @@ const toggleThreadSortOrder = () => {
             content: msg.content
           }))
         };
-        const response = await callAgent(payloadWithHistory);
+        const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
         persistMessage({
           type: 'bot',
           contentType: 'text',
@@ -629,7 +842,7 @@ const toggleThreadSortOrder = () => {
           content: msg.content
         }))
       };
-      const response = await callAgent(payloadWithHistory);
+      const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
       persistMessage({
         type: 'bot',
         contentType: 'text',
@@ -864,7 +1077,7 @@ const toggleThreadSortOrder = () => {
             type="button"
             className="settings-button"
             title="Настройки"
-            onClick={() => console.log('Settings button clicked')}
+            onClick={openSettings}
           >
             <Settings className="icon" />
             Настройки
@@ -895,6 +1108,80 @@ const toggleThreadSortOrder = () => {
         />
 
       </div>
+
+      {/* Settings Panel */}
+      {isSettingsOpen && (
+        <div className="settings-overlay" onClick={closeSettings}>
+          <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-header">
+              <h3>Настройки</h3>
+              <button type="button" className="close-button" onClick={closeSettings}>
+                <X className="icon" />
+              </button>
+            </div>
+
+            <div className="settings-content">
+              <div className="setting-group">
+                <label className="setting-label">
+                  <input
+                    type="checkbox"
+                    checked={openRouterEnabled}
+                    onChange={(e) => setOpenRouterEnabled(e.target.checked)}
+                  />
+                  Использовать OpenRouter (облачная модель)
+                </label>
+              </div>
+
+              {openRouterEnabled && (
+                <>
+                  <div className="setting-group">
+                    <label className="setting-label">API Key OpenRouter</label>
+                    <div className="input-with-icon">
+                      <input
+                        type={showApiKey ? "text" : "password"}
+                        value={openRouterApiKey}
+                        onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                        placeholder="sk-or-v1-..."
+                        className="settings-input"
+                      />
+                      <button
+                        type="button"
+                        className="input-icon-button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        title={showApiKey ? "Скрыть API ключ" : "Показать API ключ"}
+                      >
+                        {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="setting-group">
+                    <label className="setting-label">Модель</label>
+                    <select
+                      value={openRouterModel}
+                      onChange={(e) => setOpenRouterModel(e.target.value)}
+                      className="settings-select"
+                      disabled={isLoadingModels || !openRouterApiKey}
+                    >
+                      {isLoadingModels ? (
+                        <option>Загрузка моделей...</option>
+                      ) : availableModels.length > 0 ? (
+                        availableModels.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))
+                      ) : (
+                        <option disabled>Укажите API ключ для загрузки моделей</option>
+                      )}
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

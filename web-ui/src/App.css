@@ -739,3 +739,135 @@
   border-color: rgba(0, 255, 144, 0.75);
   transform: translateY(-1px);
 }
+
+/* Settings Panel */
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.settings-panel {
+  background: rgba(0, 0, 0, 0.95);
+  border: 1px solid rgba(0, 255, 144, 0.3);
+  border-radius: 0.75rem;
+  padding: 0;
+  max-width: 500px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(0, 255, 144, 0.2);
+}
+
+.settings-header h3 {
+  margin: 0;
+  color: #00ff90;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: rgba(0, 255, 144, 0.6);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.close-button:hover {
+  color: rgba(0, 255, 144, 0.9);
+  background: rgba(0, 255, 144, 0.1);
+}
+
+.settings-content {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.setting-label {
+  color: #00ff90;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.setting-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #00ff90;
+}
+
+.input-with-icon {
+  position: relative;
+}
+
+.input-icon-button {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: rgba(0, 255, 144, 0.6);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.input-icon-button:hover {
+  color: rgba(0, 255, 144, 0.9);
+  background: rgba(0, 255, 144, 0.1);
+}
+
+.settings-input, .settings-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(0, 255, 144, 0.3);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: #00ff90;
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-input:focus, .settings-select:focus {
+  border-color: rgba(0, 255, 144, 0.6);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 255, 144, 0.2);
+}
+
+.settings-input::placeholder {
+  color: rgba(0, 255, 144, 0.4);
+}
