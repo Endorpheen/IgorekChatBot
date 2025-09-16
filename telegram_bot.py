@@ -77,6 +77,7 @@ def call_ai_query(prompt: str) -> str:
             text=True,
             cwd=os.getcwd(),
             check=False,
+            timeout=120,
         )
     except Exception as exc:  # pragma: no cover - subprocess failure
         raise RuntimeError(f"Не удалось выполнить ai-query: {exc}") from exc

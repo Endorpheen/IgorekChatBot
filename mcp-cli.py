@@ -189,13 +189,13 @@ def ask_llm(prompt, context=None):
     payload = {
         "model": "qwen/qwen3-4b-2507",
         "messages": messages,
-        "max_tokens": 2000,
+        "max_tokens": 4000,
         "stream": False,
         "temperature": 0.7
     }
 
     try:
-        r = requests.post(llm_url, json=payload, timeout=60)
+        r = requests.post(llm_url, json=payload, timeout=120)
         r.raise_for_status()
         data = r.json()
         response_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -296,7 +296,7 @@ def ai_query(prompt):
             tool_calls = message.get("tool_calls")
 
             if content:
-                console.print(Syntax(content, "markdown", theme="monokai"))
+                print(content)
 
             if not tool_calls:
                 break
