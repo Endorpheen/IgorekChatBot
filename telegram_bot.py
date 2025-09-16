@@ -42,6 +42,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     thread_id: str | None = None
+    history: list | None = None
 
 class ChatResponse(BaseModel):
     status: str
@@ -56,6 +57,9 @@ if not TELEGRAM_BOT_TOKEN:
 
 ALLOWED_USER_IDS = {310176382}
 
+# Хранение истории бесед по user_id
+user_histories = {}
+
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-9;]*[mGKF]")
 CARRIAGE_RETURN_RE = re.compile(r"\r(?!\n)")
@@ -66,13 +70,17 @@ def sanitize_output(text: str) -> str:
     return ANSI_ESCAPE_RE.sub("", without_cr)
 
 
-def call_ai_query(prompt: str) -> str:
+def call_ai_query(prompt: str, history: list = None) -> str:
     """Run mcp-cli ai-query and return textual response."""
     logger.info("call_ai_query: prompt=%s", prompt)
 
     try:
+        cmd = [sys.executable, "mcp-cli.py", "ai-query", prompt]
+        if history:
+            import json
+            cmd.extend(["--history", json.dumps(history)])
         result = subprocess.run(
-            [sys.executable, "mcp-cli.py", "ai-query", prompt],
+            cmd,
             capture_output=True,
             text=True,
             cwd=os.getcwd(),
@@ -121,15 +129,29 @@ async def webhook(request: Request):
         print(f"Сообщение от chat_id {chat_id}: {text}")
         logger.info("Webhook: user_id=%s text=%s", user_id, text)
 
-        # Вызвать ai_query через subprocess
+        # Инициализировать историю для пользователя, если не существует
+        if user_id not in user_histories:
+            user_histories[user_id] = []
+
+        # Добавить сообщение пользователя в историю
+        user_histories[user_id].append({"type": "user", "content": text})
+
+        # Ограничить историю 20 сообщениями
+        if len(user_histories[user_id]) > 20:
+            user_histories[user_id] = user_histories[user_id][-20:]
+
+        # Вызвать ai_query через subprocess с историей
         print("Вызываю ai_query...")
         logger.info("Webhook: invoking ai_query for user_id=%s", user_id)
         try:
-            response_text = call_ai_query(text)
+            response_text = call_ai_query(text, user_histories[user_id][:-1])  # Исключить текущее сообщение
         except RuntimeError as exc:
             response_text = f"Ошибка обработки: {exc}"
             print(response_text)
             logger.exception("Webhook: ai_query failed")
+        else:
+            # Добавить ответ бота в историю
+            user_histories[user_id].append({"type": "bot", "content": response_text})
 
         print(f"Ответ для отправки: {response_text}")
 
@@ -158,7 +180,7 @@ async def chat_endpoint(payload: ChatRequest):
     logger.info("Web UI запрос: thread_id=%s message=%s", current_thread_id, message)
 
     try:
-        response_text = call_ai_query(message)
+        response_text = call_ai_query(message, payload.history)
     except RuntimeError as exc:
         logger.exception("Ошибка при выполнении ai-query")
         raise HTTPException(status_code=502, detail=str(exc)) from exc

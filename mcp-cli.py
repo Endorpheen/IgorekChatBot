@@ -240,12 +240,16 @@ def execute_tool(tool_name, arguments):
         return content
     return "Tool not found"
 
-def ai_query(prompt):
+def ai_query(prompt, history=None):
     llm_url = "http://192.168.0.155:8010/v1/chat/completions"
     messages = [
-        {"role": "system", "content": "You are an AI assistant with access to tools for searching and fetching notes from a vault. Use the tools when needed to answer questions about the user's notes."},
-        {"role": "user", "content": prompt}
+        {"role": "system", "content": "You are an AI assistant with access to tools for searching and fetching notes from a vault. Use the tools when needed to answer questions about the user's notes."}
     ]
+    if history:
+        for msg in history[-20:]:  # Ограничить последние 20 сообщений, чтобы не превысить лимит контекста
+            role = "user" if msg.get("type") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": prompt})
 
     tools = [
         {
@@ -341,6 +345,7 @@ def main():
 
     ai_parser = subparsers.add_parser("ai-query")
     ai_parser.add_argument("query", help="Запрос к AI с доступом к инструментам vault")
+    ai_parser.add_argument("--history", help="JSON строка с историей сообщений")
 
     args = parser.parse_args()
 
@@ -355,7 +360,8 @@ def main():
     elif args.command == "ask-llm":
         ask_llm(args.prompt, args.context)
     elif args.command == "ai-query":
-        ai_query(args.query)
+        history = json.loads(args.history) if args.history else None
+        ai_query(args.query, history)
     else:
         parser.print_help()
 

@@ -207,7 +207,7 @@ const App = () => {
     ]);
   };
 
-  const callAgent = async (payload: { message: string; thread_id?: string }) => {
+  const callAgent = async (payload: { message: string; thread_id?: string; history?: any[] }) => {
     const response = await fetch(buildApiUrl('/chat'), {
       method: 'POST',
       headers: {
@@ -217,6 +217,7 @@ const App = () => {
         message: payload.message,
         thread_id: payload.thread_id,
         user_id: agentUserId,
+        history: payload.history,
       }),
     });
 
@@ -260,7 +261,16 @@ const App = () => {
 
     if (isAwaitingImageDescription) {
       try {
-        const response = await callAgent(payload);
+        // Подготовить историю для отправки
+        const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
+        const payloadWithHistory = {
+          ...payload,
+          history: historyMessages.map(msg => ({
+            type: msg.type,
+            content: msg.content
+          }))
+        };
+        const response = await callAgent(payloadWithHistory);
         persistMessage({
           type: 'bot',
           contentType: 'text',
@@ -287,7 +297,16 @@ const App = () => {
       }
 
       try {
-        const response = await callAgent(payload);
+        // Подготовить историю для отправки
+        const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
+        const payloadWithHistory = {
+          ...payload,
+          history: historyMessages.map(msg => ({
+            type: msg.type,
+            content: msg.content
+          }))
+        };
+        const response = await callAgent(payloadWithHistory);
         persistMessage({
           type: 'bot',
           contentType: 'text',
@@ -308,7 +327,16 @@ const App = () => {
     }
 
     try {
-      const response = await callAgent(payload);
+      // Подготовить историю для отправки
+      const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
+      const payloadWithHistory = {
+        ...payload,
+        history: historyMessages.map(msg => ({
+          type: msg.type,
+          content: msg.content
+        }))
+      };
+      const response = await callAgent(payloadWithHistory);
       persistMessage({
         type: 'bot',
         contentType: 'text',
