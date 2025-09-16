@@ -41,8 +41,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
+  gap: 1rem;
   margin-bottom: 2rem;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .app-header__identity {
@@ -84,6 +90,26 @@
 .power-button:hover {
   background: rgba(255, 72, 72, 0.2);
   border-color: rgba(255, 72, 72, 0.75);
+  transform: translateY(-1px);
+}
+
+.music-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(0, 255, 144, 0.35);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.4);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.music-button:hover {
+  background: rgba(0, 96, 48, 0.35);
+  border-color: rgba(0, 255, 144, 0.75);
   transform: translateY(-1px);
 }
 
