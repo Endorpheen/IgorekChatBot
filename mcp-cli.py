@@ -9,7 +9,7 @@ from rich.text import Text
 import argparse
 import os
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 
 
@@ -189,7 +189,9 @@ def ask_llm(prompt, context=None):
     payload = {
         "model": "qwen/qwen3-4b-2507",
         "messages": messages,
-        "max_tokens": 1000
+        "max_tokens": 2000,
+        "stream": False,
+        "temperature": 0.7
     }
 
     try:
@@ -197,7 +199,7 @@ def ask_llm(prompt, context=None):
         r.raise_for_status()
         data = r.json()
         response_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        console.print(Syntax(response_text, "markdown", theme="monokai"))
+        print(response_text)
     except requests.exceptions.RequestException as e:
         console.print(f"[red]Ошибка подключения к LLM: {e}[/red]")
     except ValueError:
@@ -308,7 +310,7 @@ def ai_query(prompt):
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call["id"],
-                    "content": json.dumps(result)
+                    "content": json.dumps(result, ensure_ascii=False)
                 })
 
         except requests.exceptions.RequestException as e:
