@@ -20,14 +20,14 @@ MCP_URL = os.getenv("MCP_URL")
 if not MCP_URL:
     console.print("[red]Переменная окружения MCP_URL не установлена.[/red]")
     console.print("Добавьте MCP_URL в .env или экспортируйте её в окружение")
-    sys.exit(1)
+    raise RuntimeError("Переменная окружения MCP_URL не установлена.")
 
 def rpc_call(method, params=None, _id=1):
     token = os.getenv("AUTH_TOKEN")
     if not token:
         console.print("[red]Переменная окружения AUTH_TOKEN не установлена.[/red]")
         console.print("Установите токен, например: export AUTH_TOKEN=ВАШ_ТОКЕН")
-        sys.exit(1)
+        raise RuntimeError("Переменная окружения AUTH_TOKEN не установлена.")
 
     payload = {"jsonrpc": "2.0", "id": _id, "method": method}
     if params:
@@ -51,10 +51,10 @@ def rpc_call(method, params=None, _id=1):
 
     if "error" in data:
         console.print(f"[red]RPC error: {data['error']}[/red]")
-        sys.exit(1)
+        raise RuntimeError(f"RPC error: {data['error']}")
     if "result" not in data:
         console.print("[red]Некорректный ответ сервера[/red]")
-        sys.exit(1)
+        raise RuntimeError("Некорректный ответ сервера")
     return data
 
 def list_tools():
@@ -206,44 +206,47 @@ def ask_llm(prompt, context=None):
         console.print("[red]Ошибка парсинга ответа LLM[/red]")
 
 def execute_tool(tool_name, arguments):
-    if tool_name == "search":
-        query = arguments.get("query", "")
-        since = arguments.get("since")
-        # Выполнить поиск
-        resp = rpc_call("tools/call", {
-            "name": "search",
-            "arguments": {"query": query, "since": since} if since else {"query": query}
-        })
-        result = resp.get("result", {})
-        content_items = result.get("content") or []
-        results = []
-        if content_items and isinstance(content_items, list):
-            first = content_items[0]
-            if isinstance(first, dict):
-                json_obj = first.get("json") or {}
-                results = json_obj.get("results") or []
-        return [{"id": r.get("id"), "snippet": r.get("snippet"), "modified": r.get("modified")} for r in results]
-    elif tool_name == "fetch":
-        note_id = arguments.get("id")
-        resp = rpc_call("tools/call", {
-            "name": "fetch",
-            "arguments": {"id": note_id}
-        })
-        result = resp.get("result", {})
-        content_items = result.get("content") or []
-        content = None
-        if content_items and isinstance(content_items, list):
-            first = content_items[0]
-            if isinstance(first, dict):
-                json_obj = first.get("json") or {}
-                content = json_obj.get("content")
-        return content
-    return "Tool not found"
+    try:
+        if tool_name == "search":
+            query = arguments.get("query", "")
+            since = arguments.get("since")
+            # Выполнить поиск
+            resp = rpc_call("tools/call", {
+                "name": "search",
+                "arguments": {"query": query, "since": since} if since else {"query": query}
+            })
+            result = resp.get("result", {})
+            content_items = result.get("content") or []
+            results = []
+            if content_items and isinstance(content_items, list):
+                first = content_items[0]
+                if isinstance(first, dict):
+                    json_obj = first.get("json") or {}
+                    results = json_obj.get("results") or []
+            return [{"id": r.get("id"), "snippet": r.get("snippet"), "modified": r.get("modified")} for r in results]
+        elif tool_name == "fetch":
+            note_id = arguments.get("id")
+            resp = rpc_call("tools/call", {
+                "name": "fetch",
+                "arguments": {"id": note_id}
+            })
+            result = resp.get("result", {})
+            content_items = result.get("content") or []
+            content = None
+            if content_items and isinstance(content_items, list):
+                first = content_items[0]
+                if isinstance(first, dict):
+                    json_obj = first.get("json") or {}
+                    content = json_obj.get("content")
+            return content
+        return "Tool not found"
+    except RuntimeError as e:
+        return str(e)
 
 def ai_query(prompt, history=None):
     llm_url = "http://192.168.0.155:8010/v1/chat/completions"
     messages = [
-        {"role": "system", "content": "You are an AI assistant with access to tools for searching and fetching notes from a vault. Use the tools when needed to answer questions about the user's notes."}
+        {"role": "system", "content": "You are an AI assistant with access to tools for searching and fetching notes from a vault. Always use the search tool first to find the correct note ID, then use fetch with the exact ID. Do not assume note IDs, always search to confirm. Use the tools when needed to answer questions about the user's notes."}
     ]
     if history:
         for msg in history[-20:]:  # Ограничить последние 20 сообщений, чтобы не превысить лимит контекста
