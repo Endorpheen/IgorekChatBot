@@ -6,8 +6,10 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from uuid import uuid4
 
+import json
 import requests
 import uvicorn
 from dotenv import load_dotenv
@@ -75,10 +77,12 @@ def call_ai_query(prompt: str, history: list = None) -> str:
     logger.info("call_ai_query: prompt=%s", prompt)
 
     try:
-        cmd = [sys.executable, "mcp-cli.py", "ai-query", prompt]
-        if history:
-            import json
-            cmd.extend(["--history", json.dumps(history)])
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            data = {"query": prompt, "history": history}
+            json.dump(data, f)
+            temp_file = f.name
+
+        cmd = [sys.executable, "mcp-cli.py", "ai-query", "--input-file", temp_file]
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -87,6 +91,7 @@ def call_ai_query(prompt: str, history: list = None) -> str:
             check=False,
             timeout=120,
         )
+        os.unlink(temp_file)
     except Exception as exc:  # pragma: no cover - subprocess failure
         raise RuntimeError(f"Не удалось выполнить ai-query: {exc}") from exc
 

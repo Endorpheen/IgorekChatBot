@@ -265,6 +265,12 @@
   font-size: 0.95rem;
 }
 
+.message-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
 .chat-message--user .chat-prefix {
   color: rgba(0, 255, 144, 0.75);
 }
@@ -306,6 +312,28 @@
 .tts-button:hover {
   color: rgba(0, 255, 144, 0.85);
   transform: scale(1.1);
+}
+
+.copy-button {
+  background: none;
+  border: none;
+  color: rgba(0, 255, 144, 0.45);
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: color 0.2s ease, transform 0.2s ease;
+  padding: 0.2rem;
+  border-radius: 0.3rem;
+}
+
+.copy-button:hover {
+  color: rgba(0, 255, 144, 0.85);
+  background: rgba(0, 255, 144, 0.1);
+  transform: scale(1.1);
+}
+
+.copy-button.copied {
+  color: rgba(144, 255, 144, 0.9);
+  background: rgba(0, 64, 0, 0.3);
 }
 
 .typing-indicator {

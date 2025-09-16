@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Command, Mic, Power, Send, Terminal, Volume2 } from 'lucide-react';
+import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, Copy, Check } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -115,6 +115,7 @@ const App = () => {
   const [isAwaitingImageDescription, setIsAwaitingImageDescription] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
 
@@ -231,6 +232,16 @@ const App = () => {
     }
   };
 
+  const copyToClipboard = async (text: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000); // Reset after 2 seconds
+    } catch (error) {
+      console.error('Failed to copy text:', error);
+    }
+  };
+
   const persistMessage = (message: Omit<ChatMessage, 'id' | 'createdAt'>) => {
     setMessages((prev) => [
       ...prev,
@@ -263,6 +274,57 @@ const App = () => {
 
     const data = (await response.json()) as ChatResponse;
     return data;
+  };
+
+  const sendMessage = async (message: string) => {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    persistMessage({
+      type: 'user',
+      contentType: 'text',
+      content: trimmed,
+      threadId,
+    });
+
+    setIsTyping(true);
+
+    const payload = {
+      message: trimmed,
+      thread_id: threadId,
+      user_id: agentUserId,
+    };
+
+    try {
+      // Подготовить историю для отправки
+      const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot'));
+      const payloadWithHistory = {
+        ...payload,
+        history: historyMessages.map(msg => ({
+          type: msg.type,
+          content: msg.content
+        }))
+      };
+      const response = await callAgent(payloadWithHistory);
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: response.response ?? 'Бот ничего не ответил.',
+        threadId: response.thread_id ?? threadId,
+      });
+    } catch (error) {
+      console.error(error);
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: `Не удалось отправить сообщение: ${(error as Error).message}`,
+        threadId,
+      });
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleCommandClick = (command: string) => {
@@ -331,7 +393,20 @@ const App = () => {
         persistMessage({
           type: 'bot',
           contentType: 'text',
-          content: 'Roo - ваш ИИ-ассистент для выполнения задач и генерации изображений. Введите команду или запрос для взаимодействия.',
+          content: `Igorek - ваш ИИ-ассистент для выполнения задач 
+
+**Функции веб-интерфейса:**
+- **Чат**: Отправляйте текстовые сообщения боту через поле ввода или голосовой ввод (кнопка микрофона).
+- **Темы**: Создавайте новые темы чатов кнопкой "Новый тред" для организации разговоров.
+- **Команды**: Используйте /help для этого сообщения.
+- **Reboot мозг**: Кнопка с молотком отправляет запрос на получение краткого резюме заметки "USER.MD" для напоминания модели о пользователе.
+- **TTS**: Включите/выключите озвучивание ответов бота кнопкой "TTS включен/выключен".
+- **Голосовой ввод**: Кнопка микрофона для голосового ввода сообщений.
+- **Очистка состояния**: Кнопка с иконкой питания очищает локальное хранилище и перезагружает интерфейс.
+- **Подписка**: Кнопка "Подпишись на нас" ведет на Telegram канал.
+- **История**: Сообщения сохраняются в браузере, можно переключаться между темами.
+
+Введите команду или запрос для взаимодействия.`,
           threadId,
         });
         setInput('');
@@ -505,11 +580,21 @@ const App = () => {
                   ) : (
                     <img src={`data:image/png;base64,${msg.content}`} alt="Generated" className="chat-image" />
                   )}
-                  {msg.type === 'bot' && msg.contentType === 'text' && (
-                    <button className="tts-button" type="button" onClick={() => speak(msg.content)}>
-                      🔊
+                  <div className="message-actions">
+                    <button
+                      className={`copy-button ${copiedMessageId === msg.id ? 'copied' : ''}`}
+                      type="button"
+                      onClick={() => copyToClipboard(msg.content, msg.id)}
+                      title="Копировать сообщение"
+                    >
+                      {copiedMessageId === msg.id ? <Check className="icon" /> : <Copy className="icon" />}
                     </button>
-                  )}
+                    {msg.type === 'bot' && msg.contentType === 'text' && (
+                      <button className="tts-button" type="button" onClick={() => speak(msg.content)}>
+                        🔊
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               {isTyping && (
@@ -558,6 +643,15 @@ const App = () => {
                   {command}
                 </button>
               ))}
+              <button
+                type="button"
+                className="command-button"
+                onClick={() => sendMessage('Выполни fetch для заметки "USER.MD" и верни краткое резюме содержимого')}
+                disabled={isTyping}
+              >
+                <Hammer className="icon" />
+                Reboot мозг
+              </button>
             </div>
           </main>
         </div>

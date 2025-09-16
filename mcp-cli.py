@@ -347,7 +347,8 @@ def main():
     ask_parser.add_argument("--context", help="ID заметки для контекста")
 
     ai_parser = subparsers.add_parser("ai-query")
-    ai_parser.add_argument("query", help="Запрос к AI с доступом к инструментам vault")
+    ai_parser.add_argument("--input-file", help="JSON файл с query и history")
+    ai_parser.add_argument("query", nargs="?", help="Запрос к AI с доступом к инструментам vault")
     ai_parser.add_argument("--history", help="JSON строка с историей сообщений")
 
     args = parser.parse_args()
@@ -363,8 +364,15 @@ def main():
     elif args.command == "ask-llm":
         ask_llm(args.prompt, args.context)
     elif args.command == "ai-query":
-        history = json.loads(args.history) if args.history else None
-        ai_query(args.query, history)
+        if args.input_file:
+            with open(args.input_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            query = data.get('query', '')
+            history = data.get('history')
+        else:
+            query = args.query
+            history = json.loads(args.history) if args.history else None
+        ai_query(query, history)
     else:
         parser.print_help()
 
