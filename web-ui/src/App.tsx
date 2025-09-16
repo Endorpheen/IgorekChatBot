@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check } from 'lucide-react';
+import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -22,6 +22,8 @@ interface ChatMessage {
 interface ThreadNameMap {
   [threadId: string]: string;
 }
+
+type ThreadSortOrder = 'newest-first' | 'oldest-first';
 
 interface ChatResponse {
   status: string;
@@ -106,11 +108,15 @@ const App = () => {
     }
     return ['default'];
   });
+const [threadNames, setThreadNames] = useState<ThreadNameMap>(() => {
+  const stored = localStorage.getItem('roo_agent_thread_names');
+  return stored ? (JSON.parse(stored) as ThreadNameMap) : { default: 'Главный тред' };
+});
+const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
+  const stored = localStorage.getItem('roo_agent_thread_sort');
+  return stored === 'newest-first' ? 'newest-first' : 'oldest-first';
+});
 
-  const [threadNames, setThreadNames] = useState<ThreadNameMap>(() => {
-    const stored = localStorage.getItem('roo_agent_thread_names');
-    return stored ? (JSON.parse(stored) as ThreadNameMap) : { default: 'Главный тред' };
-  });
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -176,6 +182,10 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem('roo_agent_thread_names', JSON.stringify(threadNames));
   }, [threadNames]);
+
+  useEffect(() => {
+    localStorage.setItem('roo_agent_thread_sort', threadSortOrder);
+  }, [threadSortOrder]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -342,18 +352,22 @@ const App = () => {
       console.error('Failed to copy code:', error);
     }
   };
-
-  const toggleMusicMute = () => {
-    if (audioRef.current) {
-      if (musicMuted) {
-        audioRef.current.volume = 0.3; // Restore volume
-        setMusicMuted(false);
-      } else {
-        audioRef.current.volume = 0; // Mute
-        setMusicMuted(true);
-      }
+const toggleMusicMute = () => {
+  if (audioRef.current) {
+    if (musicMuted) {
+      audioRef.current.volume = 0.3; // Restore volume
+      setMusicMuted(false);
+    } else {
+      audioRef.current.volume = 0; // Mute
+      setMusicMuted(true);
     }
-  };
+  }
+};
+
+const toggleThreadSortOrder = () => {
+  setThreadSortOrder((prev) => (prev === 'newest-first' ? 'oldest-first' : 'newest-first'));
+};
+
 
 
   // Custom component for code blocks with syntax highlighting and copy functionality
@@ -635,6 +649,14 @@ const App = () => {
     }
   };
 
+  const sortedThreads = useMemo(() => {
+    const list = [...threads];
+    if (threadSortOrder === 'newest-first') {
+      list.reverse();
+    }
+    return list;
+  }, [threads, threadSortOrder]);
+
   const messagesToRender = useMemo(
     () => messages.filter((msg) => msg.threadId === threadId),
     [messages, threadId],
@@ -695,7 +717,7 @@ const App = () => {
           <aside className="threads-panel">
             <div className="panel-title">Темы</div>
             <ul className="threads-list">
-              {threads.map((id) => (
+              {sortedThreads.map((id) => (
                 <li key={id} className={id === threadId ? 'active' : ''}>
                   <button type="button" onClick={() => setThreadId(id)} className="thread-button">
                     {threadNames[id] ?? 'Без названия'}
@@ -717,6 +739,15 @@ const App = () => {
               <button type="button" onClick={handleNewThread} className="command-button">
                 <Command className="icon" />
                 Новый тред
+              </button>
+              <button
+                type="button"
+                className="command-button"
+                onClick={toggleThreadSortOrder}
+                title={threadSortOrder === 'newest-first' ? 'Показать новые треды снизу' : 'Показать новые треды сверху'}
+              >
+                <ArrowDownWideNarrow className="icon" />
+                {threadSortOrder === 'newest-first' ? 'Новые сверху' : 'Новые снизу'}
               </button>
               <button
                 type="button"
@@ -829,6 +860,15 @@ const App = () => {
         </div>
 
         <footer className="app-footer">
+          <button
+            type="button"
+            className="settings-button"
+            title="Настройки"
+            onClick={() => console.log('Settings button clicked')}
+          >
+            <Settings className="icon" />
+            Настройки
+          </button>
           <div>
             Code by <span className="accent">Igorek</span> / <span className="accent">Roo</span>
           </div>
