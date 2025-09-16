@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, Copy, Check } from 'lucide-react';
+import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -119,7 +119,10 @@ const App = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [copiedCodeBlockId, setCopiedCodeBlockId] = useState<string | null>(null);
+  const [musicMuted, setMusicMuted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const sendAudioRef = useRef<HTMLAudioElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
 
   const agentUserId = useMemo(() => import.meta.env.VITE_TELEGRAM_USER_ID ?? 'local-user', []);
@@ -177,6 +180,91 @@ const App = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, threadId]);
+
+  // Auto-play background music on page load and restart on any button interaction
+  useEffect(() => {
+    const playAudio = async () => {
+      if (audioRef.current && !musicMuted) {
+        try {
+          audioRef.current.currentTime = 0; // Reset to beginning
+          audioRef.current.volume = 0.3; // Set initial volume to 30%
+          await audioRef.current.play();
+        } catch (error) {
+          console.log('Audio playback failed:', error);
+        }
+      }
+    };
+
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(playAudio, 100);
+
+    // Add handler for button clicks to restart music
+    const handleButtonClick = (event: Event) => {
+      const target = event.target as HTMLElement;
+      if (target?.tagName === 'BUTTON' && !musicMuted) {
+        const buttonText = target.textContent?.trim() || '';
+
+        // Check if it's the send button or contains "Отправить"
+        if (buttonText.includes('Отправить') || target.classList.contains('send-button')) {
+          // Play send sound for input/send interactions
+          if (sendAudioRef.current) {
+            sendAudioRef.current.currentTime = 0;
+            sendAudioRef.current.volume = 0.5;
+            sendAudioRef.current.play().catch(error => {
+              console.log('Failed to play send sound:', error);
+            });
+          }
+        } else {
+          // Play abrupt sound for all other button interactions
+          playAudio();
+        }
+      }
+    };
+
+    // Add global click handler to enable audio on user interaction (for initial play)
+    const enableAudio = async () => {
+      if (audioRef.current && audioRef.current.paused) {
+        try {
+          audioRef.current.volume = 0.3;
+          await audioRef.current.play();
+          // Remove the initial enable listeners after successful play
+          document.removeEventListener('click', enableAudio);
+          document.removeEventListener('keydown', enableAudio);
+        } catch (error) {
+          console.log('Failed to enable audio on interaction:', error);
+        }
+      }
+    };
+
+    // Handle input field interactions
+    const handleInputInteraction = (event: Event) => {
+      const target = event.target as HTMLElement;
+      if ((target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') && !musicMuted) {
+        if (sendAudioRef.current) {
+          sendAudioRef.current.currentTime = 0;
+          sendAudioRef.current.volume = 0.3;
+          sendAudioRef.current.play().catch(error => {
+            console.log('Failed to play input sound:', error);
+          });
+        }
+      }
+    };
+
+    document.addEventListener('click', handleButtonClick);
+    document.addEventListener('focus', handleInputInteraction);
+    document.addEventListener('input', handleInputInteraction);
+    document.addEventListener('click', enableAudio);
+    document.addEventListener('keydown', enableAudio);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleButtonClick);
+      document.removeEventListener('focus', handleInputInteraction);
+      document.removeEventListener('input', handleInputInteraction);
+      document.removeEventListener('click', enableAudio);
+      document.removeEventListener('keydown', enableAudio);
+    };
+  }, [musicMuted]);
 
   const handleNewThread = () => {
     const newThreadId = uuidv4();
@@ -254,6 +342,19 @@ const App = () => {
       console.error('Failed to copy code:', error);
     }
   };
+
+  const toggleMusicMute = () => {
+    if (audioRef.current) {
+      if (musicMuted) {
+        audioRef.current.volume = 0.3; // Restore volume
+        setMusicMuted(false);
+      } else {
+        audioRef.current.volume = 0; // Mute
+        setMusicMuted(true);
+      }
+    }
+  };
+
 
   // Custom component for code blocks with syntax highlighting and copy functionality
   const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
@@ -398,6 +499,7 @@ const App = () => {
     if (!trimmed) {
       return;
     }
+
 
     persistMessage({
       type: 'user',
@@ -550,23 +652,33 @@ const App = () => {
               <div className="app-subtitle">Режим: оперативный | Пользователь: {userName}</div>
             </div>
           </div>
-          <button
-            className="power-button"
-            type="button"
-            onClick={() => {
-              const confirmed = window.confirm('Очистить локальное хранилище и перезагрузить интерфейс?');
-              if (confirmed) {
-                localStorage.removeItem('roo_agent_messages');
-                localStorage.removeItem('roo_agent_threads');
-                localStorage.removeItem('roo_agent_thread');
-                localStorage.removeItem('roo_agent_thread_names');
-                window.location.reload();
-              }
-            }}
-            title="Очистить состояние"
-          >
-            <Power className="icon" />
-          </button>
+          <div className="app-header__actions">
+            <button
+              className="power-button"
+              type="button"
+              onClick={() => {
+                const confirmed = window.confirm('Очистить локальное хранилище и перезагрузить интерфейс?');
+                if (confirmed) {
+                  localStorage.removeItem('roo_agent_messages');
+                  localStorage.removeItem('roo_agent_threads');
+                  localStorage.removeItem('roo_agent_thread');
+                  localStorage.removeItem('roo_agent_thread_names');
+                  window.location.reload();
+                }
+              }}
+              title="Очистить состояние"
+            >
+              <Power className="icon" />
+            </button>
+            <button
+              className="music-button"
+              type="button"
+              onClick={toggleMusicMute}
+              title={musicMuted ? 'Включить звук' : 'Выключить звук'}
+            >
+              {musicMuted ? <VolumeX className="icon" /> : <Volume2 className="icon" />}
+            </button>
+          </div>
         </header>
 
         <div className="telegram-banner">
@@ -724,6 +836,24 @@ const App = () => {
             Produced by <span className="accent">end0</span>
           </div>
         </footer>
+
+        {/* Background music - plays once on page load */}
+        <audio
+          ref={audioRef}
+          src="/abrupt-stop-and-disk-failure.mp3"
+          preload="auto"
+          loop={false}
+          style={{ display: 'none' }}
+        />
+
+        {/* Send button and input sound effect */}
+        <audio
+          ref={sendAudioRef}
+          src="/sound12.mp3"
+          preload="auto"
+          style={{ display: 'none' }}
+        />
+
       </div>
     </div>
   );
