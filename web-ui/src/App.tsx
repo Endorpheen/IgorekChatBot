@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X } from 'lucide-react';
+import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, Edit } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -399,6 +399,17 @@ useEffect(() => {
     setMessages((prev) => prev.filter((msg) => msg.threadId !== target));
     if (threadId === target) {
       setThreadId('default');
+    }
+  };
+
+  const handleRenameThread = (id: string) => {
+    const currentName = threadNames[id] ?? 'Без названия';
+    const newName = prompt('Введите новое название треда:', currentName);
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      setThreadNames((prev) => ({
+        ...prev,
+        [id]: newName.trim(),
+      }));
     }
   };
 
@@ -1125,7 +1136,7 @@ const loadAvailableModels = async () => {
           <div className="app-header__identity">
             <Terminal className="icon" />
             <div>
-              <div className="app-title">Roo Control Terminal</div>
+              <div className="app-title">Igorek Control Terminal</div>
               <div className="app-subtitle">Режим: оперативный | Пользователь: {userName}</div>
             </div>
           </div>
@@ -1161,6 +1172,13 @@ const loadAvailableModels = async () => {
         <div className="telegram-banner">
           <button
             type="button"
+            className="report-error-button"
+            onClick={() => window.open('https://t.me/Endorpheen', '_blank')}
+          >
+            Сообщить о ошибке
+          </button>
+          <button
+            type="button"
             className="telegram-button"
             onClick={() => window.open('https://t.me/ezoneenews', '_blank')}
           >
@@ -1189,6 +1207,17 @@ const loadAvailableModels = async () => {
                       <span className={`thread-model-indicator ${isOpenRouter ? 'openrouter' : 'local'}`}>
                         {isOpenRouter ? '🌩️' : '💻'}
                       </span>
+                      <button
+                        className="thread-edit"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRenameThread(id);
+                        }}
+                        title="Переименовать тред"
+                      >
+                        <Edit className="icon" />
+                      </button>
                       <span className="thread-name">{threadLabel}</span>
                     </button>
                     {id !== 'default' && (
@@ -1339,11 +1368,25 @@ const loadAvailableModels = async () => {
             <Settings className="icon" />
             Настройки
           </button>
-          <div>
-            Code by <span className="accent">Igorek</span> / <span className="accent">Roo</span>
+          <div className="footer-center">
+            <div>
+              Code by <span className="accent">Igorek</span> / <span className="accent">Roo</span>
+            </div>
+            <div>
+              Produced by <span className="accent">end0</span>
+            </div>
           </div>
-          <div>
-            Produced by <span className="accent">end0</span>
+          <div className="support-project">
+            <img src="/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
+            <span
+              className="support-text"
+              onClick={() => {
+                navigator.clipboard.writeText('0x5d36725941870C927473d2ba3eEBDe6613185b78');
+                alert('Адрес крипто кошелька MetaMask скопирован в буфер, будем рады Вашей поддержке 😊');
+              }}
+            >
+              Поддержать проект 
+            </span>
           </div>
         </footer>
 

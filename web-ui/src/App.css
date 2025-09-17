@@ -298,6 +298,26 @@
   transform: scale(1.1);
 }
 
+.thread-edit {
+  border: none;
+  background: transparent;
+  color: rgba(0, 255, 144, 0.6);
+  cursor: pointer;
+  font-size: 0.3rem;
+  transition: color 0.2s ease, transform 0.2s ease;
+  padding: 0.05rem;
+  border-radius: 0.3rem;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: -0.1rem;
+}
+
+.thread-edit:hover {
+  color: rgba(0, 255, 144, 0.9);
+  background: rgba(0, 255, 144, 0.1);
+  transform: scale(1.1);
+}
+
 .threads-actions {
   display: flex;
   flex-direction: column;
@@ -638,17 +658,33 @@
 }
 
 .app-footer {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
   font-size: 0.8rem;
   opacity: 0.65;
   text-transform: uppercase;
   letter-spacing: 0.18em;
   border-top: 1px solid rgba(0, 255, 144, 0.12);
   padding-top: 1rem;
+}
+
+.footer-center {
   text-align: center;
+}
+
+.support-project {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.8;
+  text-align: right;
+}
+
+.support-icon {
+  width: 5rem;
+  height: 5rem;
 }
 
 .settings-button {
@@ -745,6 +781,7 @@
 .telegram-banner {
   display: flex;
   justify-content: center;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
 
@@ -767,6 +804,28 @@
 .telegram-button:hover {
   background: rgba(0, 96, 48, 0.45);
   border-color: rgba(0, 255, 144, 0.75);
+  transform: translateY(-1px);
+}
+
+.report-error-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(255, 144, 144, 0.35);
+  border-radius: 0.5rem;
+  background: rgba(64, 32, 32, 0.35);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.9rem;
+}
+
+.report-error-button:hover {
+  background: rgba(96, 48, 48, 0.45);
+  border-color: rgba(255, 144, 144, 0.75);
   transform: translateY(-1px);
 }
 
