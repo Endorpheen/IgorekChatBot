@@ -1139,6 +1139,7 @@ const loadAvailableModels = async () => {
     <div className="app-root">
       <MatrixRain />
       <div className="app-shell">
+        <div className="disclaimer-banner">Игорёк очень любит галлюцинации 🤪, будьте осторожны!!! Проверяйте важную информацию!</div>
         <header className="app-header">
           <div className="app-header__identity">
             <Terminal className="icon" />
@@ -1395,7 +1396,7 @@ const loadAvailableModels = async () => {
           </button>
           <div className="footer-center">
             <div>
-              Code by <span className="accent">Igorek</span> / <span className="accent">Roo</span>
+              Code by <span className="accent">Igorek</span> / <span className="accent">Roo</span> <span className="version">alpha v1.0</span>
             </div>
             <div>
               Produced by <span className="accent">end0</span>
