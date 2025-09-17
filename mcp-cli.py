@@ -11,6 +11,9 @@ import os
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
+# Конфигурация OpenRouter
+DEFAULT_OPENROUTER_MODEL = "openrouter/sonoma-sky-alpha"
+
 
 
 
@@ -160,8 +163,15 @@ def fetch(note_id, save_path=None):
         syntax = Syntax(content, "markdown", theme="monokai", line_numbers=True)
         console.print(syntax)
 
-def ask_llm(prompt, context=None):
-    llm_url = "http://192.168.0.155:8010/v1/chat/completions"
+def ask_llm(prompt, context=None, use_openrouter=False, model=None):
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    if use_openrouter and not openrouter_api_key:
+        console.print("[red]OPENROUTER_API_KEY не установлен. Использую локальную модель.[/red]")
+        use_openrouter = False
+
+    llm_url = "https://openrouter.ai/api/v1/chat/completions" if use_openrouter else "http://192.168.0.155:8010/v1/chat/completions"
+    model_name = model if model else (DEFAULT_OPENROUTER_MODEL if use_openrouter else "qwen/qwen3-4b-2507")
+
     messages = []
     if context:
         # Если контекст указан, получаем содержимое заметки
@@ -187,21 +197,33 @@ def ask_llm(prompt, context=None):
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": "qwen/qwen3-4b-2507",
+        "model": model_name,
         "messages": messages,
         "max_tokens": 4000,
         "stream": False,
         "temperature": 0.7
     }
 
+    headers = {}
+    if use_openrouter:
+        headers = {
+            "Authorization": f"Bearer {openrouter_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost",
+            "X-Title": "MCP Vault CLI",
+        }
+
     try:
-        r = requests.post(llm_url, json=payload, timeout=120)
+        r = requests.post(llm_url, json=payload, headers=headers, timeout=120)
         r.raise_for_status()
         data = r.json()
         response_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         print(response_text)
     except requests.exceptions.RequestException as e:
         console.print(f"[red]Ошибка подключения к LLM: {e}[/red]")
+        if use_openrouter:
+            console.print("[yellow]Пробую fallback на локальную модель...[/yellow]")
+            ask_llm(prompt, context, use_openrouter=False, model=None)
     except ValueError:
         console.print("[red]Ошибка парсинга ответа LLM[/red]")
 
@@ -243,8 +265,15 @@ def execute_tool(tool_name, arguments):
     except RuntimeError as e:
         return str(e)
 
-def ai_query(prompt, history=None):
-    llm_url = "http://192.168.0.155:8010/v1/chat/completions"
+def ai_query(prompt, history=None, use_openrouter=False, model=None):
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    if use_openrouter and not openrouter_api_key:
+        console.print("[red]OPENROUTER_API_KEY не установлен. Использую локальную модель.[/red]")
+        use_openrouter = False
+
+    llm_url = "https://openrouter.ai/api/v1/chat/completions" if use_openrouter else "http://192.168.0.155:8010/v1/chat/completions"
+    model_name = model if model else (DEFAULT_OPENROUTER_MODEL if use_openrouter else "qwen/qwen3-4b-2507")
+
     messages = [
         {"role": "system", "content": "You are an AI assistant with access to tools for searching and fetching notes from a vault. Always use the search tool first to find the correct note ID, then use fetch with the exact ID. Do not assume note IDs, always search to confirm. Use the tools when needed to answer questions about the user's notes."}
     ]
@@ -253,6 +282,14 @@ def ai_query(prompt, history=None):
             role = "user" if msg.get("type") == "user" else "assistant"
             messages.append({"role": role, "content": msg.get("content", "")})
     messages.append({"role": "user", "content": prompt})
+
+    # Управление контекстом - ограничиваем количество сообщений для избежания превышения лимита
+    MAX_HISTORY_LENGTH = 10  # Максимум 10 сообщений в истории
+    if len(messages) > MAX_HISTORY_LENGTH + 1:  # +1 для текущего сообщения
+        # Сохраняем системное сообщение и последние MAX_HISTORY_LENGTH сообщений для сохранения хронологии
+        messages = [messages[0]] + messages[-(MAX_HISTORY_LENGTH):]  # system + last MAX messages
+
+        # Текущее сообщение уже включено в последние сообщения
 
     tools = [
         {
@@ -288,14 +325,23 @@ def ai_query(prompt, history=None):
 
     while True:
         payload = {
-            "model": "qwen/qwen3-4b-2507",
+            "model": model_name,
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto"
         }
 
+        headers = {}
+        if use_openrouter:
+            headers = {
+                "Authorization": f"Bearer {openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost",
+                "X-Title": "MCP Vault CLI",
+            }
+
         try:
-            r = requests.post(llm_url, json=payload, timeout=60)
+            r = requests.post(llm_url, json=payload, headers=headers, timeout=60)
             r.raise_for_status()
             data = r.json()
             message = data.get("choices", [{}])[0].get("message", {})
@@ -322,6 +368,9 @@ def ai_query(prompt, history=None):
 
         except requests.exceptions.RequestException as e:
             console.print(f"[red]Ошибка подключения к LLM: {e}[/red]")
+            if use_openrouter:
+                console.print("[yellow]Пробую fallback на локальную модель...[/yellow]")
+                ai_query(prompt, history, use_openrouter=False, model=None)
             break
         except ValueError:
             console.print("[red]Ошибка парсинга ответа LLM[/red]")
@@ -345,11 +394,15 @@ def main():
     ask_parser = subparsers.add_parser("ask-llm")
     ask_parser.add_argument("prompt", help="Вопрос для LLM")
     ask_parser.add_argument("--context", help="ID заметки для контекста")
+    ask_parser.add_argument("--use-openrouter", action="store_true", help="Использовать OpenRouter вместо локальной модели")
+    ask_parser.add_argument("--model", help="Модель для использования (по умолчанию openrouter/sonoma-sky-alpha для OpenRouter)")
 
     ai_parser = subparsers.add_parser("ai-query")
     ai_parser.add_argument("--input-file", help="JSON файл с query и history")
     ai_parser.add_argument("query", nargs="?", help="Запрос к AI с доступом к инструментам vault")
     ai_parser.add_argument("--history", help="JSON строка с историей сообщений")
+    ai_parser.add_argument("--use-openrouter", action="store_true", help="Использовать OpenRouter вместо локальной модели")
+    ai_parser.add_argument("--model", help="Модель для использования (по умолчанию openrouter/sonoma-sky-alpha для OpenRouter)")
 
     args = parser.parse_args()
 
@@ -362,7 +415,7 @@ def main():
     elif args.command == "fetch":
         fetch(args.id, args.save)
     elif args.command == "ask-llm":
-        ask_llm(args.prompt, args.context)
+        ask_llm(args.prompt, args.context, args.use_openrouter, args.model)
     elif args.command == "ai-query":
         if args.input_file:
             with open(args.input_file, 'r', encoding='utf-8') as f:
@@ -372,7 +425,7 @@ def main():
         else:
             query = args.query
             history = json.loads(args.history) if args.history else None
-        ai_query(query, history)
+        ai_query(query, history, args.use_openrouter, args.model)
     else:
         parser.print_help()
 

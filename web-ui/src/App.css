@@ -254,6 +254,36 @@
   transform: translateX(2px);
 }
 
+.thread-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0; /* Позволяет flex элементу сжиматься меньше своего содержимого */
+}
+
+.thread-model-indicator {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+  margin-left: 0.5rem;
+  width: 1.2rem;
+  text-align: center;
+}
+
+.thread-model-indicator.openrouter {
+  color: rgba(144, 255, 255, 0.9);
+}
+
+.thread-model-indicator.local {
+  color: rgba(0, 255, 144, 0.9);
+}
+
+.thread-button:hover .thread-model-indicator {
+  opacity: 1;
+}
+
 .thread-delete {
   border: none;
   background: transparent;

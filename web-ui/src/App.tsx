@@ -23,6 +23,16 @@ interface ThreadNameMap {
   [threadId: string]: string;
 }
 
+interface ThreadSettings {
+  openRouterEnabled: boolean;
+  openRouterApiKey: string;
+  openRouterModel: string;
+}
+
+interface ThreadSettingsMap {
+  [threadId: string]: ThreadSettings;
+}
+
 type ThreadSortOrder = 'newest-first' | 'oldest-first';
 
 interface ChatResponse {
@@ -118,19 +128,73 @@ const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
 });
 
 const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-const [openRouterEnabled, setOpenRouterEnabled] = useState(() => {
-  const stored = localStorage.getItem('roo_agent_openrouter_enabled');
-  return stored === 'true';
+
+// Thread-specific settings
+const [threadSettings, setThreadSettings] = useState<ThreadSettingsMap>(() => {
+  const stored = localStorage.getItem('roo_agent_thread_settings');
+  if (stored) {
+    try {
+      return JSON.parse(stored) as ThreadSettingsMap;
+    } catch (error) {
+      console.warn('Failed to parse stored thread settings', error);
+    }
+  }
+  return {};
 });
-const [openRouterApiKey, setOpenRouterApiKey] = useState(() => {
-  return localStorage.getItem('roo_agent_openrouter_api_key') || '';
-});
+
 const [showApiKey, setShowApiKey] = useState(false);
 const [availableModels, setAvailableModels] = useState<string[]>([]);
 const [isLoadingModels, setIsLoadingModels] = useState(false);
-const [openRouterModel, setOpenRouterModel] = useState(() => {
-  return localStorage.getItem('roo_agent_openrouter_model') || 'openai/gpt-4o-mini';
-});
+
+// Helper functions for current thread settings
+const getCurrentThreadSettings = (): ThreadSettings => {
+  return threadSettings[threadId] || {
+    openRouterEnabled: false,
+    openRouterApiKey: '',
+    openRouterModel: 'openai/gpt-4o-mini'
+  };
+};
+
+const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
+  setThreadSettings(prev => ({
+    ...prev,
+    [threadId]: {
+      ...getCurrentThreadSettings(),
+      ...updates
+    }
+  }));
+};
+
+// Migration logic for global settings to thread-specific
+useEffect(() => {
+  const migrateGlobalSettings = () => {
+    const globalEnabled = localStorage.getItem('roo_agent_openrouter_enabled');
+    const globalApiKey = localStorage.getItem('roo_agent_openrouter_api_key');
+    const globalModel = localStorage.getItem('roo_agent_openrouter_model');
+
+    if (globalEnabled || globalApiKey || globalModel) {
+      const defaultSettings: ThreadSettings = {
+        openRouterEnabled: globalEnabled === 'true',
+        openRouterApiKey: globalApiKey || '',
+        openRouterModel: globalModel || 'openai/gpt-4o-mini'
+      };
+
+      setThreadSettings(prev => ({
+        ...prev,
+        'default': defaultSettings
+      }));
+
+      // Clean up old global keys
+      localStorage.removeItem('roo_agent_openrouter_enabled');
+      localStorage.removeItem('roo_agent_openrouter_api_key');
+      localStorage.removeItem('roo_agent_openrouter_model');
+
+      console.log('Migrated global settings to thread-specific settings');
+    }
+  };
+
+  migrateGlobalSettings();
+}, []);
 
 
   const [input, setInput] = useState('');
@@ -202,25 +266,20 @@ const [openRouterModel, setOpenRouterModel] = useState(() => {
     localStorage.setItem('roo_agent_thread_sort', threadSortOrder);
   }, [threadSortOrder]);
 
+  // Save thread settings to localStorage
   useEffect(() => {
-    localStorage.setItem('roo_agent_openrouter_enabled', openRouterEnabled.toString());
-  }, [openRouterEnabled]);
+    localStorage.setItem('roo_agent_thread_settings', JSON.stringify(threadSettings));
+  }, [threadSettings]);
 
+  // Load available models when API key is available and settings are open
   useEffect(() => {
-    localStorage.setItem('roo_agent_openrouter_api_key', openRouterApiKey);
-  }, [openRouterApiKey]);
-
-  useEffect(() => {
-    localStorage.setItem('roo_agent_openrouter_model', openRouterModel);
-  }, [openRouterModel]);
-
-  useEffect(() => {
-    if (openRouterApiKey && isSettingsOpen) {
+    const currentSettings = getCurrentThreadSettings();
+    if (currentSettings.openRouterApiKey && isSettingsOpen) {
       loadAvailableModels();
-    } else if (!openRouterApiKey) {
+    } else if (!currentSettings.openRouterApiKey) {
       setAvailableModels([]);
     }
-  }, [openRouterApiKey, isSettingsOpen]);
+  }, [threadSettings, threadId, isSettingsOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -412,7 +471,8 @@ const closeSettings = () => {
 };
 
 const loadAvailableModels = async () => {
-  if (!openRouterApiKey) {
+  const currentSettings = getCurrentThreadSettings();
+  if (!currentSettings.openRouterApiKey) {
     setAvailableModels([]);
     return;
   }
@@ -421,7 +481,7 @@ const loadAvailableModels = async () => {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/models', {
       headers: {
-        'Authorization': `Bearer ${openRouterApiKey}`,
+        'Authorization': `Bearer ${currentSettings.openRouterApiKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -458,8 +518,8 @@ const loadAvailableModels = async () => {
       .map((model: any) => model.id);
 
     setAvailableModels(models);
-    if (models.length > 0 && !models.includes(openRouterModel)) {
-      setOpenRouterModel(models[0]);
+    if (models.length > 0 && !models.includes(currentSettings.openRouterModel)) {
+      updateCurrentThreadSettings({ openRouterModel: models[0] });
     }
   } catch (error) {
     console.error('Failed to load OpenRouter models:', error);
@@ -528,12 +588,19 @@ const loadAvailableModels = async () => {
     ]);
   };
 
-  const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[] }) => {
-    if (!openRouterApiKey) {
+  const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[]; useTools?: boolean }) => {
+    const currentSettings = getCurrentThreadSettings();
+    if (!currentSettings.openRouterApiKey) {
       throw new Error('API ключ OpenRouter не указан');
     }
 
     let messages = [
+      {
+        role: 'system',
+        content: payload.useTools
+          ? "You are an AI assistant with access to tools for searching and fetching notes from a vault. Always use the search tool first to find the correct note ID, then use fetch with the exact ID. Do not assume note IDs, always search to confirm. Use the tools when needed to answer questions about the user's notes."
+          : "You are a helpful AI assistant."
+      },
       ...payload.history?.map(msg => ({
         role: msg.type === 'user' ? 'user' : 'assistant',
         content: msg.content
@@ -543,15 +610,18 @@ const loadAvailableModels = async () => {
 
     // Управление контекстом - ограничиваем количество сообщений для избежания превышения лимита
     const MAX_HISTORY_LENGTH = 10; // Максимум 10 сообщений в истории
-    if (messages.length > MAX_HISTORY_LENGTH + 1) { // +1 для текущего сообщения
+    if (messages.length > MAX_HISTORY_LENGTH + 2) { // +2 для system и user
       const userMessages = messages.filter(msg => msg.role === 'user');
       const assistantMessages = messages.filter(msg => msg.role === 'assistant').slice(-MAX_HISTORY_LENGTH + 1);
 
       // Сохраняем последние сообщения
       messages = [
+        messages[0], // system
         ...assistantMessages.slice(0, MAX_HISTORY_LENGTH),
         ...userMessages.slice(-MAX_HISTORY_LENGTH)
       ].sort((a, b) => {
+        if (a.role === 'system') return -1;
+        if (b.role === 'system') return 1;
         // Сортируем по порядку: сначала assistant, затем user
         if (a.role === 'assistant' && b.role === 'user') return -1;
         if (a.role === 'user' && b.role === 'assistant') return 1;
@@ -562,23 +632,58 @@ const loadAvailableModels = async () => {
       messages.push({ role: 'user', content: payload.message });
     }
 
+    const tools = payload.useTools ? [
+      {
+        type: "function",
+        function: {
+          name: "search",
+          description: "Search notes in vault",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query" },
+              since: { type: "string", description: "Filter by time, e.g., 7d, 12h" }
+            },
+            required: ["query"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "fetch",
+          description: "Fetch note by id",
+          parameters: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Note ID" }
+            },
+            required: ["id"]
+          }
+        }
+      }
+    ] : undefined;
+
     console.log('OpenRouter request:', {
-      model: openRouterModel,
+      model: currentSettings.openRouterModel,
       messagesCount: messages.length,
-      lastMessage: messages[messages.length - 1]
+      lastMessage: messages[messages.length - 1],
+      useTools: payload.useTools
     });
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openRouterApiKey}`,
+        'Authorization': `Bearer ${currentSettings.openRouterApiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': window.location.origin,
         'X-Title': 'Roo Control Terminal',
       },
       body: JSON.stringify({
-        model: openRouterModel,
+        model: currentSettings.openRouterModel,
         messages: messages,
+        tools: tools,
+        tool_choice: payload.useTools ? "auto" : undefined,
         temperature: 0.7,
         max_tokens: 2048,
       }),
@@ -602,9 +707,62 @@ const loadAvailableModels = async () => {
     }
 
     const data = await response.json();
+    const message = data.choices[0]?.message;
+    const content = message?.content || '';
+    const toolCalls = message?.tool_calls;
+
+    let finalResponse = content;
+
+    // Обработка tool calls
+    if (toolCalls && toolCalls.length > 0) {
+      messages.push(message);
+
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.function.name;
+        const arguments_ = JSON.parse(toolCall.function.arguments);
+        let result;
+
+        if (toolName === 'search') {
+          result = await executeMCPTool('search', arguments_);
+        } else if (toolName === 'fetch') {
+          result = await executeMCPTool('fetch', arguments_);
+        } else {
+          result = 'Unknown tool';
+        }
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result, null, 2)
+        } as any);
+      }
+
+      // Второй запрос для финального ответа
+      const followupResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentSettings.openRouterApiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Roo Control Terminal',
+        },
+        body: JSON.stringify({
+          model: currentSettings.openRouterModel,
+          messages: messages,
+          temperature: 0.7,
+          max_tokens: 2048,
+        }),
+      });
+
+      if (followupResponse.ok) {
+        const followupData = await followupResponse.json();
+        finalResponse = followupData.choices[0]?.message?.content || content;
+      }
+    }
+
     return {
       status: 'success',
-      response: data.choices[0]?.message?.content || 'Ответ не получен',
+      response: finalResponse,
       thread_id: payload.thread_id,
     };
   };
@@ -632,6 +790,85 @@ const loadAvailableModels = async () => {
     return data;
   };
 
+  const callMCP = async (method: string, params: any) => {
+    const mcpUrl = import.meta.env.VITE_MCP_URL;
+    if (!mcpUrl) {
+      throw new Error('VITE_MCP_URL не настроен');
+    }
+
+    const token = import.meta.env.VITE_AUTH_TOKEN;
+    if (!token) {
+      throw new Error('VITE_AUTH_TOKEN не настроен');
+    }
+
+    console.log("MCP →", mcpUrl);
+    console.log("Auth →", `Bearer ${token.substring(0,20)}...`);
+
+    const payload = {
+      jsonrpc: '2.0',
+      id: 1,
+      method,
+      params,
+    };
+
+    const response = await fetch(mcpUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`MCP API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(`MCP RPC error: ${data.error}`);
+    }
+
+    return data.result;
+  };
+
+  const executeMCPTool = async (toolName: string, args: any) => {
+    try {
+      if (toolName === 'search') {
+        const result = await callMCP('tools/call', {
+          name: 'search',
+          arguments: { query: args.query, since: args.since },
+        });
+        const contentItems = result.content || [];
+        if (contentItems.length > 0) {
+          const first = contentItems[0];
+          if (first.json) {
+            return first.json.results || [];
+          }
+        }
+        return [];
+      } else if (toolName === 'fetch') {
+        const result = await callMCP('tools/call', {
+          name: 'fetch',
+          arguments: { id: args.id },
+        });
+        const contentItems = result.content || [];
+        if (contentItems.length > 0) {
+          const first = contentItems[0];
+          if (first.json) {
+            return first.json.content || '';
+          }
+        }
+        return '';
+      }
+      return 'Unknown tool';
+    } catch (error) {
+      console.error(`Ошибка выполнения MCP tool ${toolName}:`, error);
+      return `Ошибка: ${error}`;
+    }
+  };
+
+
   const sendMessage = async (message: string) => {
     const trimmed = message.trim();
     if (!trimmed) {
@@ -653,6 +890,8 @@ const loadAvailableModels = async () => {
       user_id: agentUserId,
     };
 
+    const currentSettings = getCurrentThreadSettings();
+
     try {
       // Подготовить историю для отправки
       const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot'));
@@ -663,8 +902,8 @@ const loadAvailableModels = async () => {
           content: msg.content
         }))
       };
-      console.log('OpenRouter enabled:', openRouterEnabled, 'API key:', openRouterApiKey ? 'present' : 'missing');
-      const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
+      console.log('OpenRouter enabled:', currentSettings.openRouterEnabled, 'API key:', currentSettings.openRouterApiKey ? 'present' : 'missing');
+      const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? callOpenRouter({ ...payloadWithHistory, useTools: true }) : callAgent(payloadWithHistory));
       persistMessage({
         type: 'bot',
         contentType: 'text',
@@ -676,7 +915,7 @@ const loadAvailableModels = async () => {
       const errorMessage = (error as Error).message;
 
       // Если это ошибка OpenRouter, rate limit или провайдера, и у нас включена облачная модель с API ключом, попробуем локальный агент
-      if (openRouterEnabled && openRouterApiKey && (errorMessage.includes('OpenRouter') || errorMessage.includes('Provider') || errorMessage.includes('429'))) {
+      if (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey && (errorMessage.includes('OpenRouter') || errorMessage.includes('Provider') || errorMessage.includes('429'))) {
         try {
           console.log('OpenRouter failed, falling back to local agent...');
           const fallbackResponse = await callAgent(payload);
@@ -745,6 +984,7 @@ const loadAvailableModels = async () => {
     };
 
     if (isAwaitingImageDescription) {
+      const currentSettings = getCurrentThreadSettings();
       try {
         // Подготовить историю для отправки
         const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
@@ -755,7 +995,7 @@ const loadAvailableModels = async () => {
             content: msg.content
           }))
         };
-        const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
+        const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? callOpenRouter({ ...payloadWithHistory, useTools: true }) : callAgent(payloadWithHistory));
         persistMessage({
           type: 'bot',
           contentType: 'text',
@@ -781,7 +1021,7 @@ const loadAvailableModels = async () => {
         persistMessage({
           type: 'bot',
           contentType: 'text',
-          content: `Igorek - ваш ИИ-ассистент для выполнения задач 
+          content: `Igorek - ваш ИИ-ассистент для выполнения задач
 
 **Функции веб-интерфейса:**
 - **Чат**: Отправляйте текстовые сообщения боту через поле ввода или голосовой ввод (кнопка микрофона).
@@ -802,6 +1042,7 @@ const loadAvailableModels = async () => {
         return;
       }
 
+      const currentSettings = getCurrentThreadSettings();
       try {
         // Подготовить историю для отправки
         const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
@@ -812,7 +1053,7 @@ const loadAvailableModels = async () => {
             content: msg.content
           }))
         };
-        const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
+        const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? callOpenRouter({ ...payloadWithHistory, useTools: true }) : callAgent(payloadWithHistory));
         persistMessage({
           type: 'bot',
           contentType: 'text',
@@ -832,6 +1073,7 @@ const loadAvailableModels = async () => {
       return;
     }
 
+    const currentSettings = getCurrentThreadSettings();
     try {
       // Подготовить историю для отправки
       const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
@@ -842,7 +1084,7 @@ const loadAvailableModels = async () => {
           content: msg.content
         }))
       };
-      const response = await (openRouterEnabled && openRouterApiKey ? callOpenRouter(payloadWithHistory) : callAgent(payloadWithHistory));
+      const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? callOpenRouter({ ...payloadWithHistory, useTools: true }) : callAgent(payloadWithHistory));
       persistMessage({
         type: 'bot',
         contentType: 'text',
@@ -930,23 +1172,38 @@ const loadAvailableModels = async () => {
           <aside className="threads-panel">
             <div className="panel-title">Темы</div>
             <ul className="threads-list">
-              {sortedThreads.map((id) => (
-                <li key={id} className={id === threadId ? 'active' : ''}>
-                  <button type="button" onClick={() => setThreadId(id)} className="thread-button">
-                    {threadNames[id] ?? 'Без названия'}
-                  </button>
-                  {id !== 'default' && (
+              {sortedThreads.map((id) => {
+                const settings = threadSettings[id] || { openRouterEnabled: false };
+                const isOpenRouter = settings.openRouterEnabled && settings.openRouterApiKey;
+                const threadLabel = threadNames[id] ?? 'Без названия';
+
+                return (
+                  <li key={id} className={id === threadId ? 'active' : ''}>
                     <button
-                      className="thread-delete"
                       type="button"
-                      onClick={() => handleDeleteThread(id)}
-                      title="Удалить тред"
+                      onClick={() => setThreadId(id)}
+                      className="thread-button"
+                      data-thread-name={threadLabel}
+                      title={threadLabel}
                     >
-                      ✖
+                      <span className={`thread-model-indicator ${isOpenRouter ? 'openrouter' : 'local'}`}>
+                        {isOpenRouter ? '🌩️' : '💻'}
+                      </span>
+                      <span className="thread-name">{threadLabel}</span>
                     </button>
-                  )}
-                </li>
-              ))}
+                    {id !== 'default' && (
+                      <button
+                        className="thread-delete"
+                        type="button"
+                        onClick={() => handleDeleteThread(id)}
+                        title="Удалить тред"
+                      >
+                        ✖
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             <div className="threads-actions">
               <button type="button" onClick={handleNewThread} className="command-button">
@@ -1125,22 +1382,25 @@ const loadAvailableModels = async () => {
                 <label className="setting-label">
                   <input
                     type="checkbox"
-                    checked={openRouterEnabled}
-                    onChange={(e) => setOpenRouterEnabled(e.target.checked)}
+                    checked={getCurrentThreadSettings().openRouterEnabled}
+                    onChange={(e) => updateCurrentThreadSettings({ openRouterEnabled: e.target.checked })}
                   />
                   Использовать OpenRouter (облачная модель)
                 </label>
+                <div className="setting-description">
+                  Настройка применяется только к текущему треду: {threadNames[threadId] ?? 'Без названия'}
+                </div>
               </div>
 
-              {openRouterEnabled && (
+              {getCurrentThreadSettings().openRouterEnabled && (
                 <>
                   <div className="setting-group">
                     <label className="setting-label">API Key OpenRouter</label>
                     <div className="input-with-icon">
                       <input
                         type={showApiKey ? "text" : "password"}
-                        value={openRouterApiKey}
-                        onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                        value={getCurrentThreadSettings().openRouterApiKey}
+                        onChange={(e) => updateCurrentThreadSettings({ openRouterApiKey: e.target.value })}
                         placeholder="sk-or-v1-..."
                         className="settings-input"
                       />
@@ -1158,10 +1418,10 @@ const loadAvailableModels = async () => {
                   <div className="setting-group">
                     <label className="setting-label">Модель</label>
                     <select
-                      value={openRouterModel}
-                      onChange={(e) => setOpenRouterModel(e.target.value)}
+                      value={getCurrentThreadSettings().openRouterModel}
+                      onChange={(e) => updateCurrentThreadSettings({ openRouterModel: e.target.value })}
                       className="settings-select"
-                      disabled={isLoadingModels || !openRouterApiKey}
+                      disabled={isLoadingModels || !getCurrentThreadSettings().openRouterApiKey}
                     >
                       {isLoadingModels ? (
                         <option>Загрузка моделей...</option>
