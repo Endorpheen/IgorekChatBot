@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, Edit } from 'lucide-react';
+import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -128,6 +128,7 @@ const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
 });
 
 const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
 // Thread-specific settings
 const [threadSettings, setThreadSettings] = useState<ThreadSettingsMap>(() => {
@@ -284,6 +285,12 @@ useEffect(() => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, threadId]);
+  
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Auto-play background music on page load and restart on any button interaction
   useEffect(() => {
@@ -1197,6 +1204,45 @@ const loadAvailableModels = async () => {
 
                 return (
                   <li key={id} className={id === threadId ? 'active' : ''}>
+                    <div className="thread-menu-container">
+                      <button
+                        type="button"
+                        className="thread-menu-trigger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === id ? null : id);
+                        }}
+                        title="Меню треда"
+                      >
+                        <MoreVertical className="icon" />
+                      </button>
+                      {openMenuId === id && (
+                        <div className="thread-menu" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="thread-menu-item"
+                            onClick={() => {
+                              handleRenameThread(id);
+                              setOpenMenuId(null);
+                            }}
+                          >
+                            Переименовать
+                          </button>
+                          {id !== 'default' && (
+                            <button
+                              type="button"
+                              className="thread-menu-item"
+                              onClick={() => {
+                                handleDeleteThread(id);
+                                setOpenMenuId(null);
+                              }}
+                            >
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => setThreadId(id)}
@@ -1207,29 +1253,8 @@ const loadAvailableModels = async () => {
                       <span className={`thread-model-indicator ${isOpenRouter ? 'openrouter' : 'local'}`}>
                         {isOpenRouter ? '🌩️' : '💻'}
                       </span>
-                      <button
-                        className="thread-edit"
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRenameThread(id);
-                        }}
-                        title="Переименовать тред"
-                      >
-                        <Edit className="icon" />
-                      </button>
                       <span className="thread-name">{threadLabel}</span>
                     </button>
-                    {id !== 'default' && (
-                      <button
-                        className="thread-delete"
-                        type="button"
-                        onClick={() => handleDeleteThread(id)}
-                        title="Удалить тред"
-                      >
-                        ✖
-                      </button>
-                    )}
                   </li>
                 );
               })}

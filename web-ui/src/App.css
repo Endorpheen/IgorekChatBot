@@ -960,3 +960,57 @@
 .settings-input::placeholder {
   color: rgba(0, 255, 144, 0.4);
 }
+
+.thread-menu-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.thread-menu-trigger {
+  background: none;
+  border: none;
+  color: rgba(0, 255, 144, 0.6);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.3rem;
+  transition: color 0.2s ease, background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thread-menu-trigger:hover {
+  color: rgba(0, 255, 144, 0.9);
+  background: rgba(0, 255, 144, 0.1);
+}
+
+.thread-menu {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(0, 255, 144, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.thread-menu-item {
+  background: none;
+  border: none;
+  color: #00ff90;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  text-align: left;
+  font-size: 0.85rem;
+  transition: background 0.2s ease;
+}
+
+.thread-menu-item:hover {
+  background: rgba(0, 255, 144, 0.1);
+}
