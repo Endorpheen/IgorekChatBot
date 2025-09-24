@@ -44,3 +44,5 @@ Thumbs.db
 refresh_jwt.sh
 # History rewrite artifacts (sensitive)
 replacements.txt
+
+tempfiles/ 

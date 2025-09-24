@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Hammer, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical } from 'lucide-react';
+import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -127,75 +127,76 @@ const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
   return stored === 'newest-first' ? 'newest-first' : 'oldest-first';
 });
 
-const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
 
-// Thread-specific settings
-const [threadSettings, setThreadSettings] = useState<ThreadSettingsMap>(() => {
-  const stored = localStorage.getItem('roo_agent_thread_settings');
-  if (stored) {
-    try {
-      return JSON.parse(stored) as ThreadSettingsMap;
-    } catch (error) {
-      console.warn('Failed to parse stored thread settings', error);
+  // Thread-specific settings
+  const [threadSettings, setThreadSettings] = useState<ThreadSettingsMap>(() => {
+    const stored = localStorage.getItem('roo_agent_thread_settings');
+    if (stored) {
+      try {
+        return JSON.parse(stored) as ThreadSettingsMap;
+      } catch (error) {
+        console.warn('Failed to parse stored thread settings', error);
+      }
     }
-  }
-  return {};
-});
+    return {};
+  });
 
-const [showApiKey, setShowApiKey] = useState(false);
-const [availableModels, setAvailableModels] = useState<string[]>([]);
-const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
 
-// Helper functions for current thread settings
-const getCurrentThreadSettings = (): ThreadSettings => {
-  return threadSettings[threadId] || {
-    openRouterEnabled: false,
-    openRouterApiKey: '',
-    openRouterModel: 'openai/gpt-4o-mini'
-  };
-};
-
-const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
-  setThreadSettings(prev => ({
-    ...prev,
-    [threadId]: {
-      ...getCurrentThreadSettings(),
-      ...updates
-    }
-  }));
-};
-
-// Migration logic for global settings to thread-specific
-useEffect(() => {
-  const migrateGlobalSettings = () => {
-    const globalEnabled = localStorage.getItem('roo_agent_openrouter_enabled');
-    const globalApiKey = localStorage.getItem('roo_agent_openrouter_api_key');
-    const globalModel = localStorage.getItem('roo_agent_openrouter_model');
-
-    if (globalEnabled || globalApiKey || globalModel) {
-      const defaultSettings: ThreadSettings = {
-        openRouterEnabled: globalEnabled === 'true',
-        openRouterApiKey: globalApiKey || '',
-        openRouterModel: globalModel || 'openai/gpt-4o-mini'
-      };
-
-      setThreadSettings(prev => ({
-        ...prev,
-        'default': defaultSettings
-      }));
-
-      // Clean up old global keys
-      localStorage.removeItem('roo_agent_openrouter_enabled');
-      localStorage.removeItem('roo_agent_openrouter_api_key');
-      localStorage.removeItem('roo_agent_openrouter_model');
-
-      console.log('Migrated global settings to thread-specific settings');
-    }
+  // Helper functions for current thread settings
+  const getCurrentThreadSettings = (): ThreadSettings => {
+    return threadSettings[threadId] || {
+      openRouterEnabled: false,
+      openRouterApiKey: '',
+      openRouterModel: 'openai/gpt-4o-mini'
+    };
   };
 
-  migrateGlobalSettings();
-}, []);
+  const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
+    setThreadSettings(prev => ({
+      ...prev,
+      [threadId]: {
+        ...getCurrentThreadSettings(),
+        ...updates
+      }
+    }));
+  };
+
+  // Migration logic for global settings to thread-specific
+  useEffect(() => {
+    const migrateGlobalSettings = () => {
+      const globalEnabled = localStorage.getItem('roo_agent_openrouter_enabled');
+      const globalApiKey = localStorage.getItem('roo_agent_openrouter_api_key');
+      const globalModel = localStorage.getItem('roo_agent_openrouter_model');
+
+      if (globalEnabled || globalApiKey || globalModel) {
+        const defaultSettings: ThreadSettings = {
+          openRouterEnabled: globalEnabled === 'true',
+          openRouterApiKey: globalApiKey || '',
+          openRouterModel: globalModel || 'openai/gpt-4o-mini'
+        };
+
+        setThreadSettings(prev => ({
+          ...prev,
+          'default': defaultSettings
+        }));
+
+        // Clean up old global keys
+        localStorage.removeItem('roo_agent_openrouter_enabled');
+        localStorage.removeItem('roo_agent_openrouter_api_key');
+        localStorage.removeItem('roo_agent_openrouter_model');
+
+        console.log('Migrated global settings to thread-specific settings');
+      }
+    };
+
+    migrateGlobalSettings();
+  }, []);
 
 
   const [input, setInput] = useState('');
@@ -286,8 +287,9 @@ useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, threadId]);
   
+  // Message menu click outside handler
   useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
+    const handleClickOutside = () => setOpenMessageMenu(null);
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
@@ -464,31 +466,32 @@ useEffect(() => {
       console.error('Failed to copy code:', error);
     }
   };
-const toggleMusicMute = () => {
-  if (audioRef.current) {
-    if (musicMuted) {
-      audioRef.current.volume = 0.3; // Restore volume
-      setMusicMuted(false);
-    } else {
-      audioRef.current.volume = 0; // Mute
-      setMusicMuted(true);
-    }
-  }
-};
 
-const toggleThreadSortOrder = () => {
-  setThreadSortOrder((prev) => (prev === 'newest-first' ? 'oldest-first' : 'newest-first'));
-};
+ const toggleMusicMute = () => {
+   if (audioRef.current) {
+     if (musicMuted) {
+       audioRef.current.volume = 0.3; // Restore volume
+       setMusicMuted(false);
+     } else {
+       audioRef.current.volume = 0; // Mute
+       setMusicMuted(true);
+     }
+   }
+ };
 
-const openSettings = () => {
-  setIsSettingsOpen(true);
-};
+ const toggleThreadSortOrder = () => {
+   setThreadSortOrder((prev) => (prev === 'newest-first' ? 'oldest-first' : 'newest-first'));
+ };
 
-const closeSettings = () => {
-  setIsSettingsOpen(false);
-};
+ const openSettings = () => {
+   setIsSettingsOpen(true);
+ };
 
-const loadAvailableModels = async () => {
+ const closeSettings = () => {
+   setIsSettingsOpen(false);
+ };
+
+ const loadAvailableModels = async () => {
   const currentSettings = getCurrentThreadSettings();
   if (!currentSettings.openRouterApiKey) {
     setAvailableModels([]);
@@ -549,51 +552,52 @@ const loadAvailableModels = async () => {
 
 
 
-  // Custom component for code blocks with syntax highlighting and copy functionality
-  const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || '');
-    const language = match ? match[1] : '';
-    const code = String(children).replace(/\n$/, '');
-    const codeBlockId = useMemo(() => `code-${Math.random().toString(36).substr(2, 9)}`, []);
 
-    if (!inline && language) {
-      return (
-        <div className="code-block-container">
-          <div className="code-block-header">
-            <span className="code-language">{language}</span>
-            <button
-              className={`code-copy-button ${copiedCodeBlockId === codeBlockId ? 'copied' : ''}`}
-              onClick={() => copyCodeToClipboard(code, codeBlockId)}
-              type="button"
-              title="Копировать код"
-            >
-              {copiedCodeBlockId === codeBlockId ? <Check className="icon" /> : <Copy className="icon" />}
-            </button>
-          </div>
-          <SyntaxHighlighter
-            style={vscDarkPlus}
-            language={language}
-            PreTag="div"
-            customStyle={{
-              margin: 0,
-              borderRadius: '0 0 0.5rem 0.5rem',
-              fontSize: '0.9rem',
-            }}
-            {...props}
-          >
-            {code}
-          </SyntaxHighlighter>
-        </div>
-      );
-    }
+ // Custom component for code blocks with syntax highlighting and copy functionality
+ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+   const match = /language-(\w+)/.exec(className || '');
+   const language = match ? match[1] : '';
+   const code = String(children).replace(/\n$/, '');
+   const codeBlockId = useMemo(() => `code-${Math.random().toString(36).substr(2, 9)}`, []);
 
-    // For inline code or code without language specification
-    return (
-      <code className={className} {...props}>
-        {children}
-      </code>
-    );
-  };
+   if (!inline && language) {
+     return (
+       <div className="code-block-container">
+         <div className="code-block-header">
+           <span className="code-language">{language}</span>
+           <button
+             className={`code-copy-button ${copiedCodeBlockId === codeBlockId ? 'copied' : ''}`}
+             onClick={() => copyCodeToClipboard(code, codeBlockId)}
+             type="button"
+             title="Копировать код"
+           >
+             {copiedCodeBlockId === codeBlockId ? <Check className="icon" /> : <Copy className="icon" />}
+           </button>
+         </div>
+         <SyntaxHighlighter
+           style={vscDarkPlus}
+           language={language}
+           PreTag="div"
+           customStyle={{
+             margin: 0,
+             borderRadius: '0 0 0.5rem 0.5rem',
+             fontSize: '0.9rem',
+           }}
+           {...props}
+         >
+           {code}
+         </SyntaxHighlighter>
+       </div>
+     );
+   }
+
+   // For inline code or code without language specification
+   return (
+     <code className={className} {...props}>
+       {children}
+     </code>
+   );
+ };
 
   const persistMessage = (message: Omit<ChatMessage, 'id' | 'createdAt'>) => {
     setMessages((prev) => [
@@ -887,89 +891,6 @@ const loadAvailableModels = async () => {
   };
 
 
-  const sendMessage = async (message: string) => {
-    const trimmed = message.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    persistMessage({
-      type: 'user',
-      contentType: 'text',
-      content: trimmed,
-      threadId,
-    });
-
-    setIsTyping(true);
-
-    const payload = {
-      message: trimmed,
-      thread_id: threadId,
-      user_id: agentUserId,
-    };
-
-    const currentSettings = getCurrentThreadSettings();
-
-    try {
-      // Подготовить историю для отправки
-      const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot'));
-      const payloadWithHistory = {
-        ...payload,
-        history: historyMessages.map(msg => ({
-          type: msg.type,
-          content: msg.content
-        }))
-      };
-      console.log('OpenRouter enabled:', currentSettings.openRouterEnabled, 'API key:', currentSettings.openRouterApiKey ? 'present' : 'missing');
-      const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? callOpenRouter({ ...payloadWithHistory, useTools: true }) : callAgent(payloadWithHistory));
-      persistMessage({
-        type: 'bot',
-        contentType: 'text',
-        content: response.response ?? 'Бот ничего не ответил.',
-        threadId: response.thread_id ?? threadId,
-      });
-    } catch (error) {
-      console.error(error);
-      const errorMessage = (error as Error).message;
-
-      // Если это ошибка OpenRouter, rate limit или провайдера, и у нас включена облачная модель с API ключом, попробуем локальный агент
-      if (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey && (errorMessage.includes('OpenRouter') || errorMessage.includes('Provider') || errorMessage.includes('429'))) {
-        try {
-          console.log('OpenRouter failed, falling back to local agent...');
-          const fallbackResponse = await callAgent(payload);
-          persistMessage({
-            type: 'bot',
-            contentType: 'text',
-            content: fallbackResponse.response ?? 'Бот ничего не ответил.',
-            threadId: fallbackResponse.thread_id ?? threadId,
-          });
-          // Добавляем уведомление о fallback
-          persistMessage({
-            type: 'bot',
-            contentType: 'text',
-            content: `⚠️ OpenRouter недоступен, использован локальный агент.`,
-            threadId,
-          });
-        } catch (fallbackError) {
-          persistMessage({
-            type: 'bot',
-            contentType: 'text',
-            content: `Не удалось отправить сообщение: ${(fallbackError as Error).message}`,
-            threadId,
-          });
-        }
-      } else {
-        persistMessage({
-          type: 'bot',
-          contentType: 'text',
-          content: `Не удалось отправить сообщение: ${errorMessage}`,
-          threadId,
-        });
-      }
-    } finally {
-      setIsTyping(false);
-    }
-  };
 
   const handleCommandClick = (command: string) => {
     setInput(command);
@@ -1005,7 +926,7 @@ const loadAvailableModels = async () => {
       const currentSettings = getCurrentThreadSettings();
       try {
         // Подготовить историю для отправки
-        const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
+        const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot') && !(msg.type === 'user' && msg.content === trimmed));
         const payloadWithHistory = {
           ...payload,
           history: historyMessages.map(msg => ({
@@ -1045,7 +966,6 @@ const loadAvailableModels = async () => {
 - **Чат**: Отправляйте текстовые сообщения боту через поле ввода или голосовой ввод (кнопка микрофона).
 - **Темы**: Создавайте новые темы чатов кнопкой "Новый тред" для организации разговоров.
 - **Команды**: Используйте /help для этого сообщения.
-- **Reboot мозг**: Кнопка с молотком отправляет запрос на получение краткого резюме заметки "USER.MD" для напоминания модели о пользователе.
 - **TTS**: Включите/выключите озвучивание ответов бота кнопкой "TTS включен/выключен".
 - **Голосовой ввод**: Кнопка микрофона для голосового ввода сообщений.
 - **Очистка состояния**: Кнопка с иконкой питания очищает локальное хранилище и перезагружает интерфейс.
@@ -1063,7 +983,7 @@ const loadAvailableModels = async () => {
       const currentSettings = getCurrentThreadSettings();
       try {
         // Подготовить историю для отправки
-        const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
+        const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot') && !(msg.type === 'user' && msg.content === trimmed));
         const payloadWithHistory = {
           ...payload,
           history: historyMessages.map(msg => ({
@@ -1094,7 +1014,7 @@ const loadAvailableModels = async () => {
     const currentSettings = getCurrentThreadSettings();
     try {
       // Подготовить историю для отправки
-      const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.type === 'user' || msg.type === 'bot');
+      const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot') && !(msg.type === 'user' && msg.content === trimmed));
       const payloadWithHistory = {
         ...payload,
         history: historyMessages.map(msg => ({
@@ -1310,17 +1230,42 @@ const loadAvailableModels = async () => {
                   )}
                   <div className="message-actions">
                     <button
-                      className={`copy-button ${copiedMessageId === msg.id ? 'copied' : ''}`}
+                      className="menu-button"
                       type="button"
-                      onClick={() => copyToClipboard(msg.content, msg.id)}
-                      title="Копировать сообщение"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMessageMenu(openMessageMenu === msg.id ? null : msg.id);
+                      }}
+                      title="Действия с сообщением"
                     >
-                      {copiedMessageId === msg.id ? <Check className="icon" /> : <Copy className="icon" />}
+                      <MoreVertical className="icon" />
                     </button>
-                    {msg.type === 'bot' && msg.contentType === 'text' && (
-                      <button className="tts-button" type="button" onClick={() => speak(msg.content)}>
-                        🔊
-                      </button>
+                    {openMessageMenu === msg.id && (
+                      <div className="message-menu" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="menu-item"
+                          onClick={() => {
+                            copyToClipboard(msg.content, msg.id);
+                            setOpenMessageMenu(null);
+                          }}
+                        >
+                          Скопировать сообщение
+                          {copiedMessageId === msg.id && <Check className="menu-item-icon" />}
+                        </button>
+                        {msg.type === 'bot' && msg.contentType === 'text' && (
+                          <button
+                            type="button"
+                            className="menu-item"
+                            onClick={() => {
+                              speak(msg.content);
+                              setOpenMessageMenu(null);
+                            }}
+                          >
+                            Озвучить сообщение
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1371,15 +1316,6 @@ const loadAvailableModels = async () => {
                   {command}
                 </button>
               ))}
-              <button
-                type="button"
-                className="command-button"
-                onClick={() => sendMessage('Выполни fetch для заметки "USER.MD" и верни краткое резюме содержимого')}
-                disabled={isTyping}
-              >
-                <Hammer className="icon" />
-                Reboot мозг
-              </button>
             </div>
           </main>
         </div>
@@ -1403,7 +1339,7 @@ const loadAvailableModels = async () => {
             </div>
           </div>
           <div className="support-project">
-            <img src="/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
+            <img src="/web-ui/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
             <span
               className="support-text"
               onClick={() => {
@@ -1419,7 +1355,7 @@ const loadAvailableModels = async () => {
         {/* Background music - plays once on page load */}
         <audio
           ref={audioRef}
-          src="/abrupt-stop-and-disk-failure.mp3"
+          src="/web-ui/abrupt-stop-and-disk-failure.mp3"
           preload="auto"
           loop={false}
           style={{ display: 'none' }}
@@ -1428,7 +1364,7 @@ const loadAvailableModels = async () => {
         {/* Send button and input sound effect */}
         <audio
           ref={sendAudioRef}
-          src="/sound12.mp3"
+          src="/web-ui/sound12.mp3"
           preload="auto"
           style={{ display: 'none' }}
         />

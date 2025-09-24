@@ -1,0 +1,20 @@
+services:
+  chatbot:
+    build: .
+    container_name: igorekchatbot
+    restart: unless-stopped
+    networks:
+      - mcpnet
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - AUTH_TOKEN=${AUTH_TOKEN}
+      - MCP_URL=${MCP_URL}
+      - VITE_MCP_URL=${VITE_MCP_URL}
+      - VITE_AUTH_TOKEN=${VITE_AUTH_TOKEN}
+    # Порты наружу не нужны, если через Caddy
+    # ports:
+    #   - "3000:3000"
+
+networks:
+  mcpnet:
+    external: true

@@ -34,3 +34,32 @@ button,
 input {
   font-family: inherit;
 }
+
+pre, code {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  pre, code {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}
+
+.message, .user-message, .assistant-message {
+  display: block;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
+  padding: 0.4em 0.6em;
+  overflow-y: visible;    /* маленькие сообщения показывать целиком */
+}
+
+/* Включаем скролл только для реально больших блоков */
+.message:has(pre),
+.message:has(code),
+.message.long {
+}
