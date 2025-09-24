@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical } from 'lucide-react';
+import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -207,6 +207,7 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [copiedCodeBlockId, setCopiedCodeBlockId] = useState<string | null>(null);
   const [musicMuted, setMusicMuted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement>(null);
@@ -457,13 +458,96 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
     }
   };
 
-  const copyCodeToClipboard = async (code: string, codeBlockId: string) => {
+   const copyCodeToClipboard = async (code: string, codeBlockId: string) => {
     try {
       await navigator.clipboard.writeText(code);
       setCopiedCodeBlockId(codeBlockId);
       setTimeout(() => setCopiedCodeBlockId(null), 2000); // Reset after 2 seconds
     } catch (error) {
       console.error('Failed to copy code:', error);
+    }
+  };
+
+const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file || !file.type.startsWith('image/')) {
+    alert('Пожалуйста, выберите изображение.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target?.result as string;
+    if (dataUrl) {
+      persistMessage({
+        type: 'user',
+        contentType: 'image',
+        content: dataUrl,
+        threadId,
+      });
+      // Pass dataUrl to describeImage
+      setTimeout(() => describeImage(dataUrl), 100);
+    }
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+};
+
+  const describeImage = async (imageDataUrl: string) => {
+    setIsTyping(true);
+    const currentSettings = getCurrentThreadSettings();
+    if (!currentSettings.openRouterEnabled || !currentSettings.openRouterApiKey) {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: 'Для анализа изображений включите OpenRouter в настройках этого треда.',
+        threadId,
+      });
+      setIsTyping(false);
+      return;
+    }
+
+    // Get current state history
+    const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.contentType !== 'image')  // Exclude other images to avoid confusion
+      .map(msg => ({
+        type: msg.type,
+        content: msg.content,
+        contentType: msg.contentType,
+      }));
+
+    // Append the image as the last user message
+    const enhancedHistory = [...historyMessages, {
+      type: 'user',
+      content: imageDataUrl,
+      contentType: 'image',
+    }];
+
+    const payload = {
+      message: 'Опиши это изображение подробно, извлеки весь текст если есть.',
+      thread_id: threadId,
+      history: enhancedHistory,
+      useTools: false,
+    };
+
+    console.log('Enhanced history for vision:', enhancedHistory.slice(-2));  // Log last messages to see image
+
+    try {
+      const response = await callOpenRouter(payload);
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: response.response ?? 'Не удалось получить описание изображения.',
+        threadId: response.thread_id ?? threadId,
+      });
+    } catch (error) {
+      console.error('Image description error:', error);
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: `Ошибка при анализе изображения: ${(error as Error).message}`,
+        threadId,
+      });
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -611,89 +695,136 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
   };
 
   const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[]; useTools?: boolean }) => {
-    const currentSettings = getCurrentThreadSettings();
-    if (!currentSettings.openRouterApiKey) {
-      throw new Error('API ключ OpenRouter не указан');
+  const currentSettings = getCurrentThreadSettings();
+  if (!currentSettings.openRouterApiKey) {
+    throw new Error('API ключ OpenRouter не указан');
+  }
+  let messages: any[] = [
+    {
+      role: 'system',
+      content: payload.useTools
+        ? "You are an AI assistant with access to tools for searching and fetching notes from a vault. Always use the search tool first to find the correct note ID, then use fetch with the exact ID. Do not assume note IDs, always search to confirm. Use the tools when needed to answer questions about the user's notes."
+        : "You are a helpful AI assistant. You can analyze images when provided."
     }
-
-    let messages = [
-      {
-        role: 'system',
-        content: payload.useTools
-          ? "You are an AI assistant with access to tools for searching and fetching notes from a vault. Always use the search tool first to find the correct note ID, then use fetch with the exact ID. Do not assume note IDs, always search to confirm. Use the tools when needed to answer questions about the user's notes."
-          : "You are a helpful AI assistant."
-      },
-      ...payload.history?.map(msg => ({
-        role: msg.type === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      })) || [],
-      { role: 'user', content: payload.message }
-    ];
-
-    // Управление контекстом - ограничиваем количество сообщений для избежания превышения лимита
-    const MAX_HISTORY_LENGTH = 10; // Максимум 10 сообщений в истории
-    if (messages.length > MAX_HISTORY_LENGTH + 2) { // +2 для system и user
-      const userMessages = messages.filter(msg => msg.role === 'user');
-      const assistantMessages = messages.filter(msg => msg.role === 'assistant').slice(-MAX_HISTORY_LENGTH + 1);
-
-      // Сохраняем последние сообщения
-      messages = [
-        messages[0], // system
-        ...assistantMessages.slice(0, MAX_HISTORY_LENGTH),
-        ...userMessages.slice(-MAX_HISTORY_LENGTH)
-      ].sort((a, b) => {
-        if (a.role === 'system') return -1;
-        if (b.role === 'system') return 1;
-        // Сортируем по порядку: сначала assistant, затем user
-        if (a.role === 'assistant' && b.role === 'user') return -1;
-        if (a.role === 'user' && b.role === 'assistant') return 1;
-        return 0;
-      });
-
-      // Добавляем текущее сообщение
-      messages.push({ role: 'user', content: payload.message });
+  ];
+  if (payload.history) {
+    for (const msg of payload.history) {
+      const role = msg.type === 'user' ? 'user' : 'assistant';
+      if (msg.contentType === 'image' && role === 'user') {
+        messages.push({
+          role,
+          content: [
+            { type: 'text', text: 'Анализируй это изображение.' },
+            { type: 'image_url', image_url: { url: msg.content } }
+          ]
+        });
+      } else {
+        messages.push({ role, content: msg.content });
+      }
     }
-
-    const tools = payload.useTools ? [
-      {
-        type: "function",
-        function: {
-          name: "search",
-          description: "Search notes in vault",
-          parameters: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Search query" },
-              since: { type: "string", description: "Filter by time, e.g., 7d, 12h" }
-            },
-            required: ["query"]
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "fetch",
-          description: "Fetch note by id",
-          parameters: {
-            type: "object",
-            properties: {
-              id: { type: "string", description: "Note ID" }
-            },
-            required: ["id"]
-          }
+  }
+  if (payload.message) {
+    messages.push({ role: 'user', content: payload.message });
+  }
+  // Context management
+  const MAX_HISTORY_LENGTH = 10;
+  if (messages.length > MAX_HISTORY_LENGTH + 2) {
+    messages = [messages[0], ...messages.slice(-(MAX_HISTORY_LENGTH + 1))];
+  }
+  const tools = payload.useTools ? [
+    {
+      type: "function",
+      function: {
+        name: "search",
+        description: "Search notes in vault",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search query" },
+            since: { type: "string", description: "Filter by time, e.g., 7d, 12h" }
+          },
+          required: ["query"]
         }
       }
-    ] : undefined;
-
-    console.log('OpenRouter request:', {
+    },
+    {
+      type: "function",
+      function: {
+        name: "fetch",
+        description: "Fetch note by id",
+        parameters: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Note ID" }
+          },
+          required: ["id"]
+        }
+      }
+    }
+  ] : undefined;
+  console.log('OpenRouter request:', {
+    model: currentSettings.openRouterModel,
+    messagesCount: messages.length,
+    lastMessage: messages[messages.length - 1],
+    useTools: payload.useTools
+  });
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${currentSettings.openRouterApiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'Roo Control Terminal',
+    },
+    body: JSON.stringify({
       model: currentSettings.openRouterModel,
-      messagesCount: messages.length,
-      lastMessage: messages[messages.length - 1],
-      useTools: payload.useTools
-    });
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      messages: messages,
+      tools: tools,
+      tool_choice: payload.useTools ? "auto" : undefined,
+      temperature: 0.7,
+      max_tokens: 2048,
+    }),
+  });
+  console.log('OpenRouter response status:', response.status);
+  if (!response.ok) {
+    let errorMessage = `HTTP ${response.status}`;
+    let errorDetails = '';
+    try {
+      const error = await response.json();
+      console.log('OpenRouter error response:', error);
+      errorMessage = error.error?.message || error.message || response.statusText;
+      errorDetails = JSON.stringify(error, null, 2);
+    } catch {
+      errorMessage = response.statusText;
+    }
+    console.error('OpenRouter API error details:', errorDetails);
+    throw new Error(`OpenRouter API error: ${errorMessage}`);
+  }
+  const data = await response.json();
+  const message = data.choices[0]?.message;
+  const content = message?.content || '';
+  const toolCalls = message?.tool_calls;
+  let finalResponse = content;
+  if (toolCalls && toolCalls.length > 0) {
+    messages.push(message);
+    for (const toolCall of toolCalls) {
+      const toolName = toolCall.function.name;
+      const arguments_ = JSON.parse(toolCall.function.arguments);
+      let result;
+      if (toolName === 'search') {
+        result = await executeMCPTool('search', arguments_);
+      } else if (toolName === 'fetch') {
+        result = await executeMCPTool('fetch', arguments_);
+      } else {
+        result = 'Unknown tool';
+      }
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result, null, 2)
+      } as any);
+    }
+    const followupResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${currentSettings.openRouterApiKey}`,
@@ -704,90 +835,21 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
       body: JSON.stringify({
         model: currentSettings.openRouterModel,
         messages: messages,
-        tools: tools,
-        tool_choice: payload.useTools ? "auto" : undefined,
         temperature: 0.7,
         max_tokens: 2048,
       }),
     });
-
-    console.log('OpenRouter response status:', response.status);
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}`;
-      let errorDetails = '';
-      try {
-        const error = await response.json();
-        console.log('OpenRouter error response:', error);
-        errorMessage = error.error?.message || error.message || response.statusText;
-        errorDetails = JSON.stringify(error, null, 2);
-      } catch {
-        errorMessage = response.statusText;
-      }
-      console.error('OpenRouter API error details:', errorDetails);
-      throw new Error(`OpenRouter API error: ${errorMessage}`);
+    if (followupResponse.ok) {
+      const followupData = await followupResponse.json();
+      finalResponse = followupData.choices[0]?.message?.content || content;
     }
-
-    const data = await response.json();
-    const message = data.choices[0]?.message;
-    const content = message?.content || '';
-    const toolCalls = message?.tool_calls;
-
-    let finalResponse = content;
-
-    // Обработка tool calls
-    if (toolCalls && toolCalls.length > 0) {
-      messages.push(message);
-
-      for (const toolCall of toolCalls) {
-        const toolName = toolCall.function.name;
-        const arguments_ = JSON.parse(toolCall.function.arguments);
-        let result;
-
-        if (toolName === 'search') {
-          result = await executeMCPTool('search', arguments_);
-        } else if (toolName === 'fetch') {
-          result = await executeMCPTool('fetch', arguments_);
-        } else {
-          result = 'Unknown tool';
-        }
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result, null, 2)
-        } as any);
-      }
-
-      // Второй запрос для финального ответа
-      const followupResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${currentSettings.openRouterApiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Roo Control Terminal',
-        },
-        body: JSON.stringify({
-          model: currentSettings.openRouterModel,
-          messages: messages,
-          temperature: 0.7,
-          max_tokens: 2048,
-        }),
-      });
-
-      if (followupResponse.ok) {
-        const followupData = await followupResponse.json();
-        finalResponse = followupData.choices[0]?.message?.content || content;
-      }
-    }
-
-    return {
-      status: 'success',
-      response: finalResponse,
-      thread_id: payload.thread_id,
-    };
+  }
+  return {
+    status: 'success',
+    response: finalResponse,
+    thread_id: payload.thread_id,
   };
+};
 
   const callAgent = async (payload: { message: string; thread_id?: string; history?: any[] }) => {
     const response = await fetch(buildApiUrl('/chat'), {
@@ -1014,15 +1076,23 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
     const currentSettings = getCurrentThreadSettings();
     try {
       // Подготовить историю для отправки
-      const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot') && !(msg.type === 'user' && msg.content === trimmed));
+      const historyMessages = messages.filter(msg => msg.threadId === threadId && (msg.type === 'user' || msg.type === 'bot') && !(msg.type === 'user' && msg.content === trimmed))
+        .map(msg => ({
+          type: msg.type,
+          content: msg.content,
+          contentType: msg.contentType,
+        }));
       const payloadWithHistory = {
         ...payload,
-        history: historyMessages.map(msg => ({
-          type: msg.type,
-          content: msg.content
-        }))
+        history: historyMessages,
       };
-      const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? callOpenRouter({ ...payloadWithHistory, useTools: true }) : callAgent(payloadWithHistory));
+      const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey ? 
+        callOpenRouter({ ...payloadWithHistory, useTools: true }) : 
+        callAgent({ ...payloadWithHistory, history: historyMessages.map(h => ({
+          type: h.type,
+          content: h.contentType === 'image' ? '[Изображение в чате]' : h.content
+        })) })
+      );
       persistMessage({
         type: 'bot',
         contentType: 'text',
@@ -1226,7 +1296,7 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <img src={`data:image/png;base64,${msg.content}`} alt="Generated" className="chat-image" />
+                    <img src={msg.content} alt="Uploaded image" className="chat-image" />
                   )}
                   <div className="message-actions">
                     <button
@@ -1298,6 +1368,22 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
               >
                 <Mic className="icon" />
               </button>
+              <button
+                type="button"
+                className="upload-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isTyping}
+                title="Загрузить изображение для анализа"
+              >
+                <Upload className="icon" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                hidden
+              />
               <button type="submit" className="send-button" disabled={isTyping}>
                 <Send className="icon" />
                 Отправить
