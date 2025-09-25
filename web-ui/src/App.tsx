@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload } from 'lucide-react';
+import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload, AlertTriangle, Rss } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -1173,6 +1173,7 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
             className="report-error-button"
             onClick={() => window.open('https://t.me/Endorpheen', '_blank')}
           >
+            <AlertTriangle className="icon" />
             Сообщить о ошибке
           </button>
           <button
@@ -1180,12 +1181,13 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
             className="telegram-button"
             onClick={() => window.open('https://t.me/ezoneenews', '_blank')}
           >
+            <Rss className="icon" />
             Подпишись на нас
           </button>
         </div>
 
         <div className="grid">
-          <aside className="threads-panel">
+          <aside id="threads-panel" className="threads-panel">
             <div className="panel-title">Темы</div>
             <ul className="threads-list">
               {sortedThreads.map((id) => {
@@ -1212,7 +1214,8 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
                           <button
                             type="button"
                             className="thread-menu-item"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               handleRenameThread(id);
                               setOpenMenuId(null);
                             }}
@@ -1223,7 +1226,8 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
                             <button
                               type="button"
                               className="thread-menu-item"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleDeleteThread(id);
                                 setOpenMenuId(null);
                               }}
@@ -1351,43 +1355,43 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
             </div>
 
             <form className="chat-form" onSubmit={handleSubmit}>
-              <input
-                type="text"
-                className="chat-input"
-                placeholder="Введите команду или запрос..."
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                disabled={isTyping}
-              />
-              <button
-                type="button"
-                className={`voice-button ${isRecording ? 'recording' : ''}`}
-                onClick={handleVoiceInput}
-                disabled={isTyping}
-                title="Голосовой ввод"
-              >
-                <Mic className="icon" />
-              </button>
-              <button
-                type="button"
-                className="upload-button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isTyping}
-                title="Загрузить изображение для анализа"
-              >
-                <Upload className="icon" />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                hidden
-              />
-              <button type="submit" className="send-button" disabled={isTyping}>
-                <Send className="icon" />
-                Отправить
-              </button>
+              <div className="chat-input-container">
+                <input
+                  type="text"
+                  className="chat-input"
+                  placeholder="Введите команду или запрос..."
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  disabled={isTyping}
+                />
+                <button
+                  type="button"
+                  className={`voice-button ${isRecording ? 'recording' : ''}`}
+                  onClick={handleVoiceInput}
+                  disabled={isTyping}
+                  title="Голосовой ввод"
+                >
+                  <Mic className="icon" />
+                </button>
+                <button
+                  type="button"
+                  className="upload-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isTyping}
+                  title="Загрузить изображение для анализа"
+                >
+                  <Upload className="icon" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  hidden
+                />
+                              <button type="submit" className="send-button" disabled={isTyping} title="Отправить">
+                                <Send className="icon" />
+                              </button>              </div>
             </form>
 
             <div className="command-grid">
