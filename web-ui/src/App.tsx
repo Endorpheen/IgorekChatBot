@@ -303,7 +303,13 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
         try {
           audioRef.current.currentTime = 0; // Reset to beginning
           audioRef.current.volume = 0.3; // Set initial volume to 30%
-          await audioRef.current.play();
+          if ('AudioContext' in window) {
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        }
+        await audioRef.current.play();
         } catch (error) {
           console.log('Audio playback failed:', error);
         }
@@ -341,7 +347,13 @@ const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
       if (audioRef.current && audioRef.current.paused) {
         try {
           audioRef.current.volume = 0.3;
-          await audioRef.current.play();
+          if ('AudioContext' in window) {
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        }
+        await audioRef.current.play();
           // Remove the initial enable listeners after successful play
           document.removeEventListener('click', enableAudio);
           document.removeEventListener('keydown', enableAudio);
