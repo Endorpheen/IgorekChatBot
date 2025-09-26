@@ -1176,19 +1176,17 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
               title={musicMuted ? 'Включить звук' : 'Выключить звук'}
             >
               {musicMuted ? <VolumeX className="icon" /> : <Volume2 className="icon" />}
-
+            </button>
+            <button
+              className="burger-button"
+              type="button"
+              onClick={() => setIsMenuOpen(true)}
+              title="Открыть меню"
+            >
+              <Menu className="icon" />
             </button>
           </div>
-      <div className="app-header__burger">
-        <button
-          className="burger-button"
-          type="button"
-          onClick={() => setIsMenuOpen(true)}
-          title="Открыть меню"
-        >
-          <Menu className="icon" />
-        </button>
-      </div>
+      
         </header>
 
         <div className="telegram-banner">

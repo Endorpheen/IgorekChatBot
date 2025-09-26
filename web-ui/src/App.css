@@ -925,8 +925,31 @@
   }
 
   .app-header {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .app-header__identity {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .app-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  .power-button,
+  .music-button,
+  .burger-button {
+    padding: 0.5rem;
+    min-width: 40px;
+    height: 40px;
   }
 
   .chat-input-container {
@@ -1275,9 +1298,7 @@
   }
 }
 .app-header__burger {
-
   display: none;
-
 }
 
 @media (max-width: 767px) {
