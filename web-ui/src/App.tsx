@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload, AlertTriangle, Rss } from 'lucide-react';
+import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload, AlertTriangle, Rss, Menu } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -130,6 +130,7 @@ const [threadSortOrder, setThreadSortOrder] = useState<ThreadSortOrder>(() => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Thread-specific settings
   const [threadSettings, setThreadSettings] = useState<ThreadSettingsMap>(() => {
@@ -1163,8 +1164,19 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
               title={musicMuted ? 'Включить звук' : 'Выключить звук'}
             >
               {musicMuted ? <VolumeX className="icon" /> : <Volume2 className="icon" />}
+
             </button>
           </div>
+      <div className="app-header__burger">
+        <button
+          className="burger-button"
+          type="button"
+          onClick={() => setIsMenuOpen(true)}
+          title="Открыть меню"
+        >
+          <Menu className="icon" />
+        </button>
+      </div>
         </header>
 
         <div className="telegram-banner">
@@ -1187,8 +1199,18 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         </div>
 
         <div className="grid">
-          <aside id="threads-panel" className="threads-panel">
-            <div className="panel-title">Темы</div>
+          <aside id="threads-panel" className={`threads-panel ${isMenuOpen ? 'mobile-open' : ''}`}>
+<div className="panel-title">Темы</div>
+            {isMenuOpen && (
+            <button
+              className="close-menu-button"
+              type="button"
+              onClick={() => setIsMenuOpen(false)}
+              title="Закрыть меню"
+            >
+              <X className="icon" />
+            </button>
+            )}
             <ul className="threads-list">
               {sortedThreads.map((id) => {
                 const settings = threadSettings[id] || { openRouterEnabled: false };
