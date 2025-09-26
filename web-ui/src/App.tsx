@@ -1198,9 +1198,12 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
           </button>
         </div>
 
-        <div className="grid">
+<div className="grid">
+          {isMenuOpen && (
+            <div className="menu-overlay" onClick={() => setIsMenuOpen(false)} />
+          )}
           <aside id="threads-panel" className={`threads-panel ${isMenuOpen ? 'mobile-open' : ''}`}>
-<div className="panel-title">Темы</div>
+            <div className="panel-title">Темы</div>
             {isMenuOpen && (
             <button
               className="close-menu-button"
