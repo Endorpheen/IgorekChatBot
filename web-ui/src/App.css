@@ -1327,6 +1327,16 @@
   .settings-button {
     display: none;
   }
+
+  .threads-actions .command-button {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .convai-widget {
+    display: flex;
+    justify-content: center;
+  }
 }
 
 /* Visibility utility classes */
