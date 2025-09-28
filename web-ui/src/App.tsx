@@ -9,14 +9,9 @@ import './App.css';
 
 import type { ChatMessage, ThreadNameMap, ThreadSettings, ThreadSettingsMap, ChatResponse } from './types/chat';
 import { buildApiUrl } from './utils/api';
+import { INITIAL_GREETING, COMMON_COMMANDS } from './constants/chat';
 
 type ThreadSortOrder = 'newest-first' | 'oldest-first';
-
-const INITIAL_GREETING = `SYSTEM INITIALIZED...
-Welcome to Roo Control Terminal
-Ready for input...`;
-
-const COMMON_COMMANDS = ['/help'];
 
 function ElevenLabsConvaiWidget() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,7 +45,10 @@ const App = () => {
     const stored = localStorage.getItem('roo_agent_messages');
     if (stored) {
       try {
-        return JSON.parse(stored) as ChatMessage[];
+        const parsed = JSON.parse(stored) as ChatMessage[];
+        if (parsed.length > 0) {
+            return parsed;
+        }
       } catch (error) {
         console.warn('Failed to parse stored messages', error);
       }
