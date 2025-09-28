@@ -7,39 +7,9 @@ import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
 
-type MessageAuthor = 'user' | 'bot';
-type MessageContentType = 'text' | 'image';
-
-interface ChatMessage {
-  id: string;
-  type: MessageAuthor;
-  contentType: MessageContentType;
-  content: string;
-  threadId: string;
-  createdAt: string;
-}
-
-interface ThreadNameMap {
-  [threadId: string]: string;
-}
-
-interface ThreadSettings {
-  openRouterEnabled: boolean;
-  openRouterApiKey: string;
-  openRouterModel: string;
-}
-
-interface ThreadSettingsMap {
-  [threadId: string]: ThreadSettings;
-}
+import type { ChatMessage, ThreadNameMap, ThreadSettings, ThreadSettingsMap, ChatResponse } from './types/chat';
 
 type ThreadSortOrder = 'newest-first' | 'oldest-first';
-
-interface ChatResponse {
-  status: string;
-  response: string;
-  thread_id?: string;
-}
 
 const INITIAL_GREETING = `SYSTEM INITIALIZED...
 Welcome to Roo Control Terminal
