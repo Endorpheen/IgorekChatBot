@@ -46,3 +46,4 @@ refresh_jwt.sh
 replacements.txt
 
 tempfiles/ 
+*.tar.gz
