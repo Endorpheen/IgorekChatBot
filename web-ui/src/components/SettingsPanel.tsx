@@ -168,11 +168,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 className="w-1/2 p-2 border rounded bg-gray-700 text-white"
                 min="1"
                 max="50"
-                value={threadSettings.historyMessageCount}
+                value={getCurrentThreadSettings().historyMessageCount}
                 onChange={(e) => {
                   const value = parseInt(e.target.value, 10);
                   updateCurrentThreadSettings({
-                    ...getCurrentThreadSettings(), // Use current thread's settings
                     historyMessageCount: isNaN(value) ? 5 : Math.max(1, Math.min(50, value)),
                   });
                 }}
