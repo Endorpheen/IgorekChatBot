@@ -10,35 +10,9 @@ import './App.css';
 import type { ChatMessage, ThreadNameMap, ThreadSettings, ThreadSettingsMap, ChatResponse } from './types/chat';
 import { buildApiUrl } from './utils/api';
 import { INITIAL_GREETING, COMMON_COMMANDS } from './constants/chat';
+import ElevenLabsConvaiWidget from './components/ElevenLabsConvaiWidget';
 
 type ThreadSortOrder = 'newest-first' | 'oldest-first';
-
-function ElevenLabsConvaiWidget() {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://elevenlabs.io/convai-widget/index.js';
-    script.async = true;
-    script.type = 'text/javascript';
-    document.body.appendChild(script);
-
-    const widgetElement = document.createElement('elevenlabs-convai');
-    widgetElement.setAttribute('agent-id', 'Yfxp2vAkqHQT469GVM4p');
-
-    const container = containerRef.current;
-    container?.appendChild(widgetElement);
-
-    return () => {
-      if (container?.contains(widgetElement)) {
-        container.removeChild(widgetElement);
-      }
-      document.body.removeChild(script);
-    };
-  }, []);
-
-  return <div className="convai-widget" ref={containerRef} />;
-}
 
 const App = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
