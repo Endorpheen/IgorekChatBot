@@ -1333,9 +1333,9 @@
     justify-content: flex-start;
   }
 
-  .convai-widget {
-    display: flex;
-    justify-content: center;
+  .convai-widget elevenlabs-convai {
+    position: relative !important;
+    left: 15px !important;
   }
 }
 
