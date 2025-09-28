@@ -848,8 +848,8 @@
 }
 
 .app-footer {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 1rem;
   font-size: 0.8rem;
@@ -859,6 +859,10 @@
   border-top: 1px solid rgba(0, 255, 144, 0.12);
   padding-top: 1.5rem;
   margin-top: 2rem;
+}
+
+.desktop-widget .convai-widget elevenlabs-convai {
+  position: relative !important;
 }
 
 .footer-center {
@@ -1355,5 +1359,22 @@
 
   .mobile-only {
     display: inline-flex;
+  }
+}
+
+/* Responsive Widget Visibility */
+.desktop-widget {
+  display: block;
+}
+.mobile-widget {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .desktop-widget {
+    display: none;
+  }
+  .mobile-widget {
+    display: block;
   }
 }

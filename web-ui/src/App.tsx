@@ -1330,7 +1330,9 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
                 {audioEnabled ? 'Озвучка вкл.' : 'Озвучка выкл.'}
               </button>
             </div>
-            <ElevenLabsConvaiWidget />
+            <div className="mobile-widget">
+              <ElevenLabsConvaiWidget />
+            </div>
           </aside>
 
           <main className="chat-panel">
@@ -1483,6 +1485,9 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
             <div>
               <span className="version">V1.1</span>
             </div>
+          </div>
+          <div className="desktop-widget">
+            <ElevenLabsConvaiWidget />
           </div>
           <div className="support-project">
             <img src="/web-ui/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
