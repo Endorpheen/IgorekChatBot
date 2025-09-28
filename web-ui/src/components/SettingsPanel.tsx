@@ -21,6 +21,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showApiKey, setShowApiKey] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [showSystemPromptInput, setShowSystemPromptInput] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState<string>('');
+
+  useEffect(() => {
+    const savedSystemPrompt = localStorage.getItem('systemPrompt');
+    if (savedSystemPrompt) {
+      setSystemPrompt(savedSystemPrompt);
+    }
+  }, []);
 
   const getCurrentThreadSettings = () => {
     return threadSettings[threadId] || {
@@ -146,6 +155,40 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </>
           )}
+
+          <div className="setting-group">
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => setShowSystemPromptInput(!showSystemPromptInput)}
+            >
+              Системный промпт
+            </button>
+            {showSystemPromptInput && (
+              <div className="system-prompt-container">
+                <textarea
+                  className="settings-textarea"
+                  value={systemPrompt}
+                  onChange={(e) => {
+                    setSystemPrompt(e.target.value);
+                    localStorage.setItem('systemPrompt', e.target.value);
+                  }}
+                  placeholder="Введите системный промпт..."
+                  rows={5}
+                />
+                <button
+                  type="button"
+                  className="settings-button reset-button"
+                  onClick={() => {
+                    setSystemPrompt('');
+                    localStorage.removeItem('systemPrompt');
+                  }}
+                >
+                  Сбросить
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

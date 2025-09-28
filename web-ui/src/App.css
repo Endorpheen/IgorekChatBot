@@ -1329,7 +1329,7 @@
     display: inline-flex;
   }
   .settings-button {
-    display: none;
+    /* display: none; */ /* Removed to make system prompt button visible */
   }
 
   .threads-actions .command-button {

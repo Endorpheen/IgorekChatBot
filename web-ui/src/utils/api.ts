@@ -7,12 +7,15 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   if (!settings.openRouterApiKey) {
     throw new Error('API ключ OpenRouter не указан');
   }
+
+  const customSystemPrompt = localStorage.getItem('systemPrompt');
+
   let messages: any[] = [
     {
       role: 'system',
-      content: payload.useTools
+      content: customSystemPrompt || (payload.useTools
         ? "You are an AI assistant with access to tools for searching and fetching notes from a vault. Always use the search tool first to find the correct note ID, then use fetch with the exact ID. Do not assume note IDs, always search to confirm. Use the tools when needed to answer questions about the user's notes."
-        : "You are a helpful AI assistant. You can analyze images when provided."
+        : "You are a helpful AI assistant. You can analyze images when provided.")
     }
   ];
   if (payload.history) {
