@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload, AlertTriangle, Rss, Menu } from 'lucide-react';
+import { Command, Mic, Power, Send, Terminal, Volume2, VolumeX, Copy, Check, ArrowDownWideNarrow, Settings, Eye, EyeOff, X, MoreVertical, Upload, AlertTriangle, Rss, Menu, MessageSquareText, MessageSquareOff } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
@@ -1178,6 +1178,14 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
               {musicMuted ? <VolumeX className="icon" /> : <Volume2 className="icon" />}
             </button>
             <button
+              className="tts-button desktop-only"
+              type="button"
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              title={audioEnabled ? 'Выключить озвучивание' : 'Включить озвучивание'}
+            >
+              {audioEnabled ? <MessageSquareText className="icon" /> : <MessageSquareOff className="icon" />}
+            </button>
+            <button
               className="burger-button"
               type="button"
               onClick={() => setIsMenuOpen(true)}
@@ -1305,11 +1313,21 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
               </button>
               <button
                 type="button"
-                className={`command-button ${audioEnabled ? 'enabled' : 'disabled'}`}
-                onClick={() => setAudioEnabled((prev) => !prev)}
+                className="command-button mobile-settings-button"
+                onClick={openSettings}
+                title="Настройки"
               >
-                <Volume2 className="icon" />
-                {audioEnabled ? 'TTS включен' : 'TTS выключен'}
+                <Settings className="icon" />
+                Настройки
+              </button>
+              <button
+                className="command-button mobile-only"
+                type="button"
+                onClick={() => setAudioEnabled(!audioEnabled)}
+                title={audioEnabled ? 'Выключить озвучивание' : 'Включить озвучивание'}
+              >
+                {audioEnabled ? <Volume2 className="icon" /> : <VolumeX className="icon" />}
+                {audioEnabled ? 'Озвучка вкл.' : 'Озвучка выкл.'}
               </button>
             </div>
             <ElevenLabsConvaiWidget />
