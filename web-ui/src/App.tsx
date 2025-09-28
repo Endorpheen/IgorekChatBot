@@ -1475,10 +1475,13 @@ const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
           </button>
           <div className="footer-center">
             <div>
-              Code by <span className="accent">Igorek</span> / <span className="accent">Roo</span> <span className="version">alpha v1.0</span>
+              Code by <span className="accent">GPT-5, GEMINI 2.5, GROK 4</span>
             </div>
             <div>
-              Produced by <span className="accent">end0</span>
+              CODE ORCHESTRATION by <span className="accent">end0</span>
+            </div>
+            <div>
+              <span className="version">V1.1</span>
             </div>
           </div>
           <div className="support-project">
