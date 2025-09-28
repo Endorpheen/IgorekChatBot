@@ -35,7 +35,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return threadSettings[threadId] || {
       openRouterEnabled: false,
       openRouterApiKey: '',
-      openRouterModel: 'openai/gpt-4o-mini'
+      openRouterModel: 'openai/gpt-4o-mini',
+      historyMessageCount: 5 // Default value
     };
   };
 
@@ -157,15 +158,52 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           )}
 
           <div className="setting-group">
-            <button
-              type="button"
-              className="settings-button"
-              onClick={() => setShowSystemPromptInput(!showSystemPromptInput)}
-            >
-              Системный промпт
-            </button>
+            <div className="flex items-center justify-between">
+              <label htmlFor="historyMessageCount" className="text-sm">
+                Количество сообщений в истории
+              </label>
+              <input
+                type="number"
+                id="historyMessageCount"
+                className="w-1/2 p-2 border rounded bg-gray-700 text-white"
+                min="1"
+                max="50"
+                value={threadSettings.historyMessageCount}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  updateCurrentThreadSettings({
+                    ...getCurrentThreadSettings(), // Use current thread's settings
+                    historyMessageCount: isNaN(value) ? 5 : Math.max(1, Math.min(50, value)),
+                  });
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="setting-group">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="settings-button"
+                onClick={() => setShowSystemPromptInput(!showSystemPromptInput)}
+              >
+                Системный промпт
+              </button>
+              {showSystemPromptInput && (
+                <button
+                  type="button"
+                  className="settings-button"
+                  onClick={() => {
+                    setSystemPrompt('');
+                    localStorage.removeItem('systemPrompt');
+                  }}
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
             {showSystemPromptInput && (
-              <div className="system-prompt-container">
+              <div className="system-prompt-container mt-2">
                 <textarea
                   className="settings-textarea"
                   value={systemPrompt}
@@ -176,16 +214,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   placeholder="Введите системный промпт..."
                   rows={5}
                 />
-                <button
-                  type="button"
-                  className="settings-button reset-button"
-                  onClick={() => {
-                    setSystemPrompt('');
-                    localStorage.removeItem('systemPrompt');
-                  }}
-                >
-                  Сбросить
-                </button>
               </div>
             )}
           </div>

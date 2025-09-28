@@ -11,7 +11,7 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
     <footer className="app-footer">
       <button
         type="button"
-        className="settings-button"
+        className="settings-button footer-settings-hide-mobile"
         title="Настройки"
         onClick={openSettings}
       >

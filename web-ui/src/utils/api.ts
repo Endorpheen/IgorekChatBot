@@ -1,9 +1,11 @@
+import type { ThreadSettings } from '../types/chat';
+
 export const buildApiUrl = (path: string): string => {
   const base = import.meta.env.VITE_AGENT_API_BASE ?? 'http://localhost:8018';
   return `${base.replace(/\/$/, '')}${path}`;
 };
 
-export const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[]; useTools?: boolean }, settings: { openRouterApiKey?: string; openRouterModel?: string; }) => {
+export const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[]; useTools?: boolean }, settings: { openRouterApiKey?: string; openRouterModel?: string; }, threadSettings: ThreadSettings) => {
   if (!settings.openRouterApiKey) {
     throw new Error('API ключ OpenRouter не указан');
   }
@@ -37,9 +39,9 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   if (payload.message) {
     messages.push({ role: 'user', content: payload.message });
   }
-  const MAX_HISTORY_LENGTH = 10;
-  if (messages.length > MAX_HISTORY_LENGTH + 2) {
-    messages = [messages[0], ...messages.slice(-(MAX_HISTORY_LENGTH + 1))];
+  const historyLength = Math.max(1, Math.min(50, threadSettings.historyMessageCount ?? 5));
+  if (messages.length > historyLength + 2) {
+    messages = [messages[0], ...messages.slice(-(historyLength + 1))];
   }
   const tools = payload.useTools ? [
     {

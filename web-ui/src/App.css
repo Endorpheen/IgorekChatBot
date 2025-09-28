@@ -1067,7 +1067,7 @@
   bottom: 0;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  z-index: 1001;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1376,5 +1376,9 @@
   }
   .mobile-widget {
     display: block;
+  }
+
+  .footer-settings-hide-mobile {
+    display: none !important;
   }
 }

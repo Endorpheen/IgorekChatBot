@@ -71,7 +71,7 @@ const App = () => {
   const { audioRef, sendAudioRef } = useAudioPlayer({ musicMuted });
 
   const getCurrentThreadSettings = (): ThreadSettings => {
-    return threadSettings[threadId] || { openRouterEnabled: false, openRouterApiKey: '', openRouterModel: 'openai/gpt-4o-mini' };
+    return threadSettings[threadId] || { openRouterEnabled: false, openRouterApiKey: '', openRouterModel: 'openai/gpt-4o-mini', historyMessageCount: 5 };
   };
 
   const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
@@ -115,7 +115,7 @@ const App = () => {
     };
 
     try {
-      const response = await callOpenRouter(payload, currentSettings);
+      const response = await callOpenRouter(payload, { openRouterApiKey: currentSettings.openRouterApiKey, openRouterModel: currentSettings.openRouterModel }, currentSettings);
       persistMessage({
         type: 'bot',
         contentType: 'text',
@@ -208,7 +208,7 @@ const App = () => {
 
     try {
       const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey
-        ? callOpenRouter(payload, currentSettings)
+        ? callOpenRouter(payload, { openRouterApiKey: currentSettings.openRouterApiKey, openRouterModel: currentSettings.openRouterModel }, currentSettings)
         : callAgent(payload));
       persistMessage({ type: 'bot', contentType: 'text', content: response.response ?? '...', threadId: response.thread_id ?? threadId });
     } catch (error) {
