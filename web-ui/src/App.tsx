@@ -8,6 +8,7 @@ import MatrixRain from './MatrixRain';
 import './App.css';
 
 import type { ChatMessage, ThreadNameMap, ThreadSettings, ThreadSettingsMap, ChatResponse } from './types/chat';
+import { buildApiUrl } from './utils/api';
 
 type ThreadSortOrder = 'newest-first' | 'oldest-first';
 
@@ -16,11 +17,6 @@ Welcome to Roo Control Terminal
 Ready for input...`;
 
 const COMMON_COMMANDS = ['/help'];
-
-const buildApiUrl = (path: string): string => {
-  const base = import.meta.env.VITE_AGENT_API_BASE ?? 'http://localhost:8018';
-  return `${base.replace(/\/$/, '')}${path}`;
-};
 
 function ElevenLabsConvaiWidget() {
   const containerRef = useRef<HTMLDivElement>(null);
