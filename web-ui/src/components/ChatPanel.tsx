@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import { Command, Mic, Send, Upload, MoreVertical, Check } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import type { ChatMessage } from '../types/chat';
@@ -46,6 +46,24 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
+  const codeComponent = useCallback(({ inline, className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => (
+    <CodeBlock
+      inline={inline}
+      className={className}
+      {...props}
+    >
+      {children}
+    </CodeBlock>
+  ), []);
+
+  const markdownComponents = useMemo<Components>(() => ({
+    a: ({ ...props }) => (
+      <a {...props} target="_blank" rel="noopener noreferrer" />
+    ),
+    p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => <span className="chat-text" {...props}>{children}</span>,
+    code: codeComponent,
+  }), [codeComponent]);
+
   const copyToClipboard = async (text: string, messageId: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -81,15 +99,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             <span className="chat-prefix">{msg.type === 'user' ? '>' : '$'}</span>
             {msg.contentType === 'text' ? (
               <div className="chat-content">
-                <ReactMarkdown
-                  components={{
-                    a: ({ node, ...props }) => (
-                      <a {...props} target="_blank" rel="noopener noreferrer" />
-                    ),
-                    p: ({ children }) => <span className="chat-text">{children}</span>,
-                    code: CodeBlock,
-                  }}
-                >
+                <ReactMarkdown components={markdownComponents}>
                   {msg.content}
                 </ReactMarkdown>
               </div>

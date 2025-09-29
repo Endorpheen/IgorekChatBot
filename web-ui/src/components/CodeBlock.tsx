@@ -1,11 +1,30 @@
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check } from 'lucide-react';
 
+interface CodeBlockProps {
+  inline?: boolean;
+  className?: string;
+  children: ReactNode;
+  [key: string]: unknown;
+}
+
 const copyCodeToClipboard = async (code: string, setCopied: (isCopied: boolean) => void) => {
   try {
-    await navigator.clipboard.writeText(code);
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(code);
+      console.log('✅ Скопировано в буфер обмена');
+    } else {
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      console.log('✅ Скопировано в буфер обмена');
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
   } catch (error) {
@@ -13,7 +32,8 @@ const copyCodeToClipboard = async (code: string, setCopied: (isCopied: boolean) 
   }
 };
 
-const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+const CodeBlock = ({ inline, className, children, ...props }: CodeBlockProps) => {
+  console.log(children);
   const [isCopied, setIsCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : '';
@@ -32,6 +52,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
           >
             {isCopied ? <Check className="icon" /> : <Copy className="icon" />}
           </button>
+          {isCopied && <span className="copy-notification">Скопировано!</span>}
         </div>
         <SyntaxHighlighter
           style={vscDarkPlus}
