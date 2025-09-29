@@ -1,18 +1,24 @@
-import type { ThreadSettings } from '../types/chat';
+import type { ChatMessage, ChatResponse, ThreadSettings } from '../types/chat';
 
 export const buildApiUrl = (path: string): string => {
   const base = import.meta.env.VITE_AGENT_API_BASE ?? 'http://localhost:8018';
   return `${base.replace(/\/$/, '')}${path}`;
 };
 
-export const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: any[]; useTools?: boolean }, settings: { openRouterApiKey?: string; openRouterModel?: string; }, threadSettings: ThreadSettings) => {
+interface OpenRouterMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | { type: string; text?: string; image_url?: { url: string } }[];
+  tool_call_id?: string;
+}
+
+export const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: ChatMessage[]; useTools?: boolean }, settings: { openRouterApiKey?: string; openRouterModel?: string; }, threadSettings: ThreadSettings) => {
   if (!settings.openRouterApiKey) {
     throw new Error('API ключ OpenRouter не указан');
   }
 
   const customSystemPrompt = localStorage.getItem('systemPrompt');
 
-  let messages: any[] = [
+  const messages: OpenRouterMessage[] = [
     {
       role: 'system',
       content: customSystemPrompt || (payload.useTools
@@ -41,7 +47,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   }
   const historyLength = Math.max(1, Math.min(50, threadSettings.historyMessageCount ?? 5));
   if (messages.length > historyLength + 2) {
-    messages = [messages[0], ...messages.slice(-(historyLength + 1))];
+    messages.splice(1, messages.length - historyLength - 2);
   }
   const tools = payload.useTools ? [
     {
@@ -126,7 +132,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
         role: 'tool',
         tool_call_id: toolCall.id,
         content: JSON.stringify(result, null, 2)
-      } as any);
+      });
     }
     const followupResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -155,7 +161,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   };
 };
 
-export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: any[] }) => {
+export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: ChatMessage[] }) => {
   const response = await fetch(buildApiUrl('/chat'), {
     method: 'POST',
     headers: {
@@ -169,11 +175,11 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
     throw new Error(`Agent API error: ${response.status} ${errorText}`);
   }
 
-  const data = (await response.json()) as any; // ChatResponse
+  const data = (await response.json()) as ChatResponse;
   return data;
 };
 
-export const callMCP = async (method: string, params: any) => {
+export const callMCP = async (method: string, params: Record<string, unknown>) => {
   const mcpUrl = import.meta.env.VITE_MCP_URL;
   if (!mcpUrl) {
     throw new Error('VITE_MCP_URL не настроен');
@@ -212,7 +218,7 @@ export const callMCP = async (method: string, params: any) => {
   return data.result;
 };
 
-export const executeMCPTool = async (toolName: string, args: any) => {
+export const executeMCPTool = async (toolName: string, args: Record<string, unknown>) => {
   try {
     if (toolName === 'search') {
       const result = await callMCP('tools/call', {

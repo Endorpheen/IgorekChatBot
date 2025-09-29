@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import MatrixRain from './MatrixRain';
 import './App.css';
 
-import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
+import type { ChatMessage, ThreadSettings, ThreadSettingsMap } from './types/chat';
 import { callOpenRouter, callAgent } from './utils/api';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
@@ -94,23 +94,21 @@ const App = () => {
       return;
     }
 
-    const historyMessages = messages.filter(msg => msg.threadId === threadId && msg.contentType !== 'image')
-      .map(msg => ({
-        type: msg.type,
-        content: msg.content,
-        contentType: msg.contentType,
-      }));
+    const historyMessages = messages.filter(msg => msg.threadId === threadId);
 
-    const enhancedHistory = [...historyMessages, {
+    const imageMessage: ChatMessage = {
+      id: uuidv4(),
+      threadId,
+      createdAt: new Date().toISOString(),
       type: 'user',
       content: imageDataUrl,
       contentType: 'image',
-    }];
+    };
 
     const payload = {
       message: 'Опиши это изображение подробно, извлеки весь текст если есть.',
       thread_id: threadId,
-      history: enhancedHistory,
+      history: [...historyMessages, imageMessage],
       useTools: false,
     };
 

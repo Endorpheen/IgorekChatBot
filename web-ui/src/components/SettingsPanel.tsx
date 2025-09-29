@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
+import type { ThreadSettings } from '../types/settings';
 
 interface SettingsPanelProps {
   isSettingsOpen: boolean;
   closeSettings: () => void;
-  threadSettings: any;
-  updateCurrentThreadSettings: (updates: any) => void;
-  threadNames: any;
+  threadSettings: Record<string, ThreadSettings>;
+  updateCurrentThreadSettings: (updates: Partial<ThreadSettings>) => void;
+  threadNames: Record<string, string>;
   threadId: string;
 }
 
@@ -60,7 +61,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       }
 
       const data = await response.json();
-      const models = data.data.map((model: any) => model.id).sort();
+      const models = data.data.map((model: { id: string }) => model.id).sort();
       setAvailableModels(models);
 
       if (models.length > 0 && !models.includes(currentSettings.openRouterModel)) {
@@ -166,17 +167,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 type="number"
                 id="historyMessageCount"
                 className="w-1/2 p-2 border rounded bg-gray-700 text-white"
-                min="1"
+                min="0"
                 max="50"
                 value={getCurrentThreadSettings().historyMessageCount}
                 onChange={(e) => {
                   const value = parseInt(e.target.value, 10);
                   updateCurrentThreadSettings({
-                    historyMessageCount: isNaN(value) ? 5 : Math.max(1, Math.min(50, value)),
+                    historyMessageCount: isNaN(value) ? 5 : Math.max(0, Math.min(50, value)),
                   });
                 }}
               />
             </div>
+            {getCurrentThreadSettings().historyMessageCount === 0 && (
+              <div className="setting-warning">
+                Внимание: при значении 0 история сообщений не будет учитываться. Бот будет видеть только системный промпт и текущее сообщение.
+              </div>
+            )}
           </div>
 
           <div className="setting-group">

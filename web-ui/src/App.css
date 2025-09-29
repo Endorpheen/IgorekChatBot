@@ -618,8 +618,13 @@
 }
 
 .code-copy-button.copied {
-  color: rgba(144, 255, 144, 0.9);
-  background: rgba(0, 64, 0, 0.3);
+  color: #4CAF50;
+}
+
+.copy-notification {
+  color: #ffd700;
+  font-size: 0.8em;
+  margin-left: 10px;
 }
 
 .typing-indicator {
@@ -900,10 +905,18 @@
 }
 
 .settings-button:hover {
-  border-color: rgba(0, 255, 144, 0.6);
-  background: rgba(0, 64, 32, 0.35);
-  transform: translateY(-1px);
+  background-color: #4a4a4a;
 }
+
+.setting-warning {
+  background-color: #4a4a4a;
+  color: #ffd700;
+  padding: 10px;
+  margin-top: 10px;
+  border-radius: 5px;
+  font-size: 0.9em;
+}
+
 
 .accent {
   color: rgba(0, 255, 144, 0.95);

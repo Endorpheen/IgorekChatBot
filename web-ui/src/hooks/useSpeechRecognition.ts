@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 
 interface UseSpeechRecognitionProps {
   onResult: (transcript: string) => void;
-  onError?: (error: any) => void;
+  onError?: (error: string) => void;
 }
 
 export const useSpeechRecognition = ({ onResult, onError }: UseSpeechRecognitionProps) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [recognition, setRecognition] = useState<any | null>(null);
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
 
   useEffect(() => {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const rec = new SpeechRecognition();
       rec.lang = 'ru-RU';
       rec.continuous = false;
@@ -19,11 +19,11 @@ export const useSpeechRecognition = ({ onResult, onError }: UseSpeechRecognition
 
       rec.onstart = () => setIsRecording(true);
       rec.onend = () => setIsRecording(false);
-      rec.onresult = (event: any) => {
+      rec.onresult = (event: SpeechRecognitionEvent) => {
         const transcript = event.results[0][0].transcript;
         onResult(transcript);
       };
-      rec.onerror = (event: any) => {
+      rec.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error('Speech recognition error:', event.error);
         onError?.(event.error);
         setIsRecording(false);

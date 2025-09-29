@@ -1,13 +1,14 @@
 import React from 'react';
 import { Command, MoreVertical, X, ArrowDownWideNarrow, Settings, Volume2, VolumeX } from 'lucide-react';
 import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
+import type { ThreadSettings } from '../types/settings';
 
 interface ThreadsPanelProps {
   isMenuOpen: boolean;
   setIsMenuOpen: (isOpen: boolean) => void;
   sortedThreads: string[];
-  threadSettings: any;
-  threadNames: any;
+  threadSettings: Record<string, ThreadSettings>;
+  threadNames: Record<string, string>;
   threadId: string;
   openMenuId: string | null;
   setOpenMenuId: (id: string | null) => void;
