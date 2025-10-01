@@ -6,11 +6,14 @@ from fastapi.responses import FileResponse
 import logging
 import os
 import re
-import requests
 import uvicorn
 from uuid import uuid4
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.pydantic_v1 import BaseModel as LangchainBaseModel, Field as LangchainField
+from langchain.tools import tool
 
 load_dotenv()
 
@@ -27,6 +30,7 @@ ALLOW_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1",
     "http://127.0.0.1:5173",
+    "https://igorek.end0databox.duckdns.org",
 ]
 
 app.add_middleware(
@@ -94,50 +98,64 @@ class ChatResponse(BaseModel):
     thread_id: str | None = None
 
 # -------------------------------
-# OpenRouter API
+# LangChain Tools
+# -------------------------------
+@tool
+def run_code_in_sandbox(code: str):
+    """
+    Выполняет код в песочнице.
+    """
+    logger.info(f"Вызов функции run_code_in_sandbox с кодом: {code}")
+    # В будущем здесь будет реальное выполнение кода в песочнице
+    return "Код выполнен в песочнице (симуляция)"
+
+# -------------------------------
+# LangChain
 # -------------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "x-ai/grok-4-fast:free")
 
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY не задан — чат работать не будет")
 
+llm = ChatOpenAI(
+    model=OPENROUTER_MODEL,
+    api_key=OPENROUTER_API_KEY,
+    base_url="https://openrouter.ai/api/v1",
+    temperature=0.7,
+    max_tokens=1024,
+    default_headers={
+        "HTTP-Referer": "http://localhost",
+        "X-Title": "IgorekChatBot",
+    },
+)
+
+llm_with_tools = llm.bind_tools([run_code_in_sandbox])
+
 def call_ai_query(prompt: str, history: list = None) -> str:
     """
-    Упрощённый вызов модели напрямую через OpenRouter API
+    Вызов модели через LangChain с поддержкой function-calling
     """
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY отсутствует")
 
-    messages = [{"role": "system", "content": "You are a helpful AI assistant."}]
+    messages = [("system", "You are a helpful AI assistant.")]
     if history:
         for msg in history:
-            role = "user" if msg["type"] == "user" else "assistant"
-            messages.append({"role": role, "content": msg["content"]})
-    messages.append({"role": "user", "content": prompt})
+            role = "human" if msg["type"] == "user" else "ai"
+            messages.append((role, msg["content"]))
+    messages.append(("human", prompt))
 
     try:
-        r = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "http://localhost",
-                "X-Title": "IgorekChatBot",
-            },
-            json={
-                "model": OPENROUTER_MODEL,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 1024,
-            },
-            timeout=60,
-        )
-        r.raise_for_status()
-        data = r.json()
-        return data["choices"][0]["message"]["content"]
+        ai_msg = llm_with_tools.invoke(messages)
+        if ai_msg.tool_calls:
+            for tool_call in ai_msg.tool_calls:
+                logger.info(f"Вызов функции: {tool_call['name']} с аргументами: {tool_call['args']}")
+                # В будущем здесь будет вызов и обработка результатов
+            return f"Function call: {ai_msg.tool_calls}"
+        return ai_msg.content
     except Exception as e:
-        logger.error(f"Ошибка OpenRouter API: {e}")
+        logger.error(f"Ошибка LangChain API: {e}")
         return f"Ошибка API: {e}"
 
 # -------------------------------

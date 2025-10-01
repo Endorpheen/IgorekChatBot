@@ -1,5 +1,7 @@
 # Этап 1: сборка WebUI
 FROM node:20 AS build-webui
+ARG VITE_AGENT_API_BASE
+ENV VITE_AGENT_API_BASE=$VITE_AGENT_API_BASE
 WORKDIR /webui
 COPY web-ui/ .
 RUN npm install && npm run build

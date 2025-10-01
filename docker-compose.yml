@@ -1,6 +1,9 @@
 services:
   chatbot:
-    build: .
+    build:
+      context: .
+      args:
+        - VITE_AGENT_API_BASE=${VITE_AGENT_API_BASE}
     container_name: igorekchatbot
     restart: unless-stopped
     networks:
@@ -11,6 +14,8 @@ services:
       - MCP_URL=${MCP_URL}
       - VITE_MCP_URL=${VITE_MCP_URL}
       - VITE_AUTH_TOKEN=${VITE_AUTH_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - VITE_AGENT_API_BASE=https://igorek.end0databox.duckdns.org
     # Порты наружу не нужны, если через Caddy
     # ports:
     #   - "3000:3000"
