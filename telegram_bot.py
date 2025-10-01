@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import uvicorn
+import requests
 from uuid import uuid4
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel as LangchainBaseModel, Field as LangchainField
 from langchain.tools import tool
+from langchain_core.messages import ToolMessage
 
 load_dotenv()
 
@@ -76,7 +78,6 @@ if os.path.isdir(WEBUI_DIR):
     @app.get("/sw.js")
     async def serve_root_sw():
         return FileResponse(os.path.join(WEBUI_DIR, "sw.js"))
-
     @app.get("/web-ui/{path_file}")
     async def serve_root_files(path_file: str):
         file_path = os.path.join(WEBUI_DIR, path_file)
@@ -105,9 +106,23 @@ def run_code_in_sandbox(code: str):
     """
     Выполняет код в песочнице.
     """
-    logger.info(f"Вызов функции run_code_in_sandbox с кодом: {code}")
-    # В будущем здесь будет реальное выполнение кода в песочнице
-    return "Код выполнен в песочнице (симуляция)"
+    logger.info(f"Отправка кода в песочницу: {code}")
+    try:
+        response = requests.post(
+            "http://sandbox_executor:8000/execute",
+            json={"language": "python", "code": code, "timeout": 5},
+            timeout=7
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data["exit_code"] == 0:
+            return f"Результат выполнения:\n{data['stdout']}"
+        else:
+            return f"Ошибка выполнения:\n{data['stderr']}"
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при обращении к песочнице: {e}")
+        return "Ошибка: не удалось связаться с сервисом выполнения кода."
+
 
 # -------------------------------
 # LangChain
@@ -148,12 +163,27 @@ def call_ai_query(prompt: str, history: list = None) -> str:
 
     try:
         ai_msg = llm_with_tools.invoke(messages)
-        if ai_msg.tool_calls:
-            for tool_call in ai_msg.tool_calls:
-                logger.info(f"Вызов функции: {tool_call['name']} с аргументами: {tool_call['args']}")
-                # В будущем здесь будет вызов и обработка результатов
-            return f"Function call: {ai_msg.tool_calls}"
-        return ai_msg.content
+
+        if not ai_msg.tool_calls:
+            return ai_msg.content
+
+        # Если есть вызовы инструментов, обрабатываем их
+        tool_outputs = []
+        for tool_call in ai_msg.tool_calls:
+            logger.info(f"Вызов функции: {tool_call['name']} с аргументами: {tool_call['args']}")
+            if tool_call['name'] == 'run_code_in_sandbox':
+                result = run_code_in_sandbox.run(tool_call['args'])
+                tool_outputs.append(
+                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                )
+        
+        # Добавляем вызов и результат в историю и делаем второй запрос
+        messages.append(ai_msg)
+        messages.extend(tool_outputs)
+
+        final_response = llm_with_tools.invoke(messages)
+        return final_response.content
+
     except Exception as e:
         logger.error(f"Ошибка LangChain API: {e}")
         return f"Ошибка API: {e}"

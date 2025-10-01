@@ -19,7 +19,16 @@ services:
     # Порты наружу не нужны, если через Caddy
     # ports:
     #   - "3000:3000"
-
+  sandbox_executor:
+    build:
+      context: ./sandbox_executor
+    container_name: sandbox_executor
+    restart: unless-stopped
+    networks:
+      - mcpnet
+    mem_limit: 128m
+    cpus: 0.5
 networks:
   mcpnet:
     external: true
+
