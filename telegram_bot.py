@@ -124,6 +124,28 @@ def run_code_in_sandbox(code: str):
         return "Ошибка: не удалось связаться с сервисом выполнения кода."
 
 
+@tool
+def browse_website(url: str) -> str:
+    """
+    Открывает указанный URL в браузере и возвращает его текстовое содержимое.
+    """
+    logger.info(f"Отправка URL в браузер: {url}")
+    try:
+        response = requests.post(
+            "http://browser:8000/browse",
+            json={"url": url},
+            timeout=20
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data["error"]:
+            return f"Ошибка при просмотре сайта: {data['error']}"
+        return f"Содержимое страницы {url}:\n\n{data['content']}"
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при обращении к браузеру: {e}")
+        return "Ошибка: не удалось связаться с сервисом браузера."
+
+
 # -------------------------------
 # LangChain
 # -------------------------------
@@ -145,7 +167,7 @@ llm = ChatOpenAI(
     },
 )
 
-llm_with_tools = llm.bind_tools([run_code_in_sandbox])
+llm_with_tools = llm.bind_tools([run_code_in_sandbox, browse_website])
 
 def call_ai_query(prompt: str, history: list = None) -> str:
     """
@@ -173,6 +195,11 @@ def call_ai_query(prompt: str, history: list = None) -> str:
             logger.info(f"Вызов функции: {tool_call['name']} с аргументами: {tool_call['args']}")
             if tool_call['name'] == 'run_code_in_sandbox':
                 result = run_code_in_sandbox.run(tool_call['args'])
+                tool_outputs.append(
+                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                )
+            elif tool_call['name'] == 'browse_website':
+                result = browse_website.run(tool_call['args'])
                 tool_outputs.append(
                     ToolMessage(content=str(result), tool_call_id=tool_call["id"])
                 )
