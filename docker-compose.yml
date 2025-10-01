@@ -15,7 +15,7 @@ services:
       - VITE_MCP_URL=${VITE_MCP_URL}
       - VITE_AUTH_TOKEN=${VITE_AUTH_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - VITE_AGENT_API_BASE=https://igorek.end0databox.duckdns.org
+      - VITE_AGENT_API_BASE=http://chatbot:3000
     # Порты наружу не нужны, если через Caddy
     # ports:
     #   - "3000:3000"
@@ -41,4 +41,3 @@ services:
 networks:
   mcpnet:
     external: true
-

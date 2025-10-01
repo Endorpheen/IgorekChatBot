@@ -1,7 +1,35 @@
 import type { ChatMessage, ChatResponse, ThreadSettings } from '../types/chat';
 
 export const buildApiUrl = (path: string): string => {
-  const base = import.meta.env.VITE_AGENT_API_BASE ?? 'http://localhost:8018';
+  const envBase = import.meta.env.VITE_AGENT_API_BASE?.trim();
+  const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
+
+  const shouldFallbackToOrigin = (() => {
+    if (!envBase || !runtimeOrigin) {
+      return !envBase && !!runtimeOrigin;
+    }
+
+    try {
+      const envUrl = new URL(envBase);
+      const runtimeUrl = new URL(runtimeOrigin);
+      const internalHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', 'chatbot']);
+      const envHost = envUrl.hostname.toLowerCase();
+      const runtimeHost = runtimeUrl.hostname.toLowerCase();
+
+      if (internalHosts.has(envHost) && envHost !== runtimeHost) {
+        return true;
+      }
+    } catch {
+      return !!runtimeOrigin;
+    }
+
+    return false;
+  })();
+
+  const base = shouldFallbackToOrigin
+    ? runtimeOrigin
+    : envBase ?? runtimeOrigin ?? 'http://localhost:8018';
+
   return `${base.replace(/\/$/, '')}${path}`;
 };
 
@@ -161,7 +189,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   };
 };
 
-export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: ChatMessage[] }) => {
+export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
   const response = await fetch(buildApiUrl('/chat'), {
     method: 'POST',
     headers: {

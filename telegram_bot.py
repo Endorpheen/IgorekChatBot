@@ -20,7 +20,7 @@ from langchain_core.messages import ToolMessage
 load_dotenv()
 
 logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
+    level=os.getenv("LOG_LEVEL", "DEBUG"),  # DEBUG для максимальной детализации
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("telegram_bot")
@@ -78,6 +78,7 @@ if os.path.isdir(WEBUI_DIR):
     @app.get("/sw.js")
     async def serve_root_sw():
         return FileResponse(os.path.join(WEBUI_DIR, "sw.js"))
+
     @app.get("/web-ui/{path_file}")
     async def serve_root_files(path_file: str):
         file_path = os.path.join(WEBUI_DIR, path_file)
@@ -92,6 +93,11 @@ class ChatRequest(BaseModel):
     message: str
     thread_id: str | None = None
     history: list | None = None
+    open_router_api_key: str | None = Field(default=None, alias="openRouterApiKey")
+    open_router_model: str | None = Field(default=None, alias="openRouterModel")
+
+    class Config:
+        allow_population_by_field_name = True
 
 class ChatResponse(BaseModel):
     status: str
@@ -106,7 +112,7 @@ def run_code_in_sandbox(code: str):
     """
     Выполняет код в песочнице.
     """
-    logger.info(f"Отправка кода в песочницу: {code}")
+    logger.info(f"[TOOL] Вызов run_code_in_sandbox с кодом: {code}")
     try:
         response = requests.post(
             "http://sandbox_executor:8000/execute",
@@ -120,7 +126,7 @@ def run_code_in_sandbox(code: str):
         else:
             return f"Ошибка выполнения:\n{data['stderr']}"
     except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка при обращении к песочнице: {e}")
+        logger.error(f"[TOOL] Ошибка при обращении к песочнице: {e}")
         return "Ошибка: не удалось связаться с сервисом выполнения кода."
 
 
@@ -129,7 +135,7 @@ def browse_website(url: str) -> str:
     """
     Открывает указанный URL в браузере и возвращает его текстовое содержимое.
     """
-    logger.info(f"Отправка URL в браузер: {url}")
+    logger.info(f"[TOOL] Вызов browse_website с URL: {url}")
     try:
         response = requests.post(
             "http://browser:8000/browse",
@@ -142,9 +148,8 @@ def browse_website(url: str) -> str:
             return f"Ошибка при просмотре сайта: {data['error']}"
         return f"Содержимое страницы {url}:\n\n{data['content']}"
     except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка при обращении к браузеру: {e}")
+        logger.error(f"[TOOL] Ошибка при обращении к браузеру: {e}")
         return "Ошибка: не удалось связаться с сервисом браузера."
-
 
 # -------------------------------
 # LangChain
@@ -155,26 +160,36 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "x-ai/grok-4-fast:free")
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY не задан — чат работать не будет")
 
-llm = ChatOpenAI(
-    model=OPENROUTER_MODEL,
-    api_key=OPENROUTER_API_KEY,
-    base_url="https://openrouter.ai/api/v1",
-    temperature=0.7,
-    max_tokens=1024,
-    default_headers={
-        "HTTP-Referer": "http://localhost",
-        "X-Title": "IgorekChatBot",
-    },
-)
-
-llm_with_tools = llm.bind_tools([run_code_in_sandbox, browse_website])
-
-def call_ai_query(prompt: str, history: list = None) -> str:
+def call_ai_query(prompt: str, history: list = None,
+                  user_api_key: str | None = None,
+                  user_model: str | None = None) -> str:
     """
     Вызов модели через LangChain с поддержкой function-calling
     """
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY отсутствует")
+    actual_api_key = user_api_key or OPENROUTER_API_KEY
+    actual_model = user_model or OPENROUTER_MODEL
+
+    logger.debug(f"[AI QUERY] prompt={prompt}")
+    logger.debug(f"[AI QUERY] history={history}")
+    logger.debug(f"[AI QUERY] actual_model={actual_model}")
+    logger.debug(f"[AI QUERY] actual_api_key={'***masked***' if actual_api_key else None}")
+
+    if not actual_api_key:
+        raise RuntimeError("Нет доступного OpenRouter API ключа")
+
+    # Создаём LLM и биндим инструменты каждый раз заново
+    llm = ChatOpenAI(
+        model=actual_model,
+        api_key=actual_api_key,
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0.7,
+        max_tokens=1024,
+        default_headers={
+            "HTTP-Referer": "http://localhost",
+            "X-Title": "IgorekChatBot",
+        },
+    )
+    llm_with_tools = llm.bind_tools([run_code_in_sandbox, browse_website])
 
     messages = [("system", "You are a helpful AI assistant.")]
     if history:
@@ -183,8 +198,13 @@ def call_ai_query(prompt: str, history: list = None) -> str:
             messages.append((role, msg["content"]))
     messages.append(("human", prompt))
 
+    logger.debug(f"[AI QUERY] Отправляем messages={messages}")
+
     try:
         ai_msg = llm_with_tools.invoke(messages)
+
+        logger.debug(f"[AI QUERY] Ответ модели: {ai_msg}")
+        logger.debug(f"[AI QUERY] tool_calls={ai_msg.tool_calls}")
 
         if not ai_msg.tool_calls:
             return ai_msg.content
@@ -192,7 +212,7 @@ def call_ai_query(prompt: str, history: list = None) -> str:
         # Если есть вызовы инструментов, обрабатываем их
         tool_outputs = []
         for tool_call in ai_msg.tool_calls:
-            logger.info(f"Вызов функции: {tool_call['name']} с аргументами: {tool_call['args']}")
+            logger.info(f"[AI QUERY] Вызов функции: {tool_call['name']} args={tool_call['args']}")
             if tool_call['name'] == 'run_code_in_sandbox':
                 result = run_code_in_sandbox.run(tool_call['args'])
                 tool_outputs.append(
@@ -203,16 +223,18 @@ def call_ai_query(prompt: str, history: list = None) -> str:
                 tool_outputs.append(
                     ToolMessage(content=str(result), tool_call_id=tool_call["id"])
                 )
-        
-        # Добавляем вызов и результат в историю и делаем второй запрос
+
         messages.append(ai_msg)
         messages.extend(tool_outputs)
 
+        logger.debug(f"[AI QUERY] Сообщения после tool_calls: {messages}")
+
         final_response = llm_with_tools.invoke(messages)
+        logger.debug(f"[AI QUERY] Итоговый ответ: {final_response}")
         return final_response.content
 
     except Exception as e:
-        logger.error(f"Ошибка LangChain API: {e}")
+        logger.error(f"[AI QUERY] Ошибка LangChain API: {e}", exc_info=True)
         return f"Ошибка API: {e}"
 
 # -------------------------------
@@ -220,14 +242,25 @@ def call_ai_query(prompt: str, history: list = None) -> str:
 # -------------------------------
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(payload: ChatRequest):
+    log_payload = payload.dict(by_alias=True)
+    if log_payload.get("openRouterApiKey"):
+        log_payload["openRouterApiKey"] = "***masked***"
+    logger.info("[CHAT ENDPOINT] Входящий payload: %s", log_payload)
+
     message = (payload.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Пустое сообщение недопустимо")
 
     current_thread_id = payload.thread_id or str(uuid4())
     try:
-        response_text = call_ai_query(message, payload.history)
+        response_text = call_ai_query(
+            message,
+            payload.history,
+            payload.open_router_api_key,
+            payload.open_router_model
+        )
     except RuntimeError as exc:
+        logger.error("[CHAT ENDPOINT] RuntimeError: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return ChatResponse(

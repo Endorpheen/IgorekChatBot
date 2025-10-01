@@ -177,7 +177,16 @@ const App = () => {
     setIsTyping(true);
 
     const currentSettings = getCurrentThreadSettings();
-    const payload = { message: trimmed, thread_id: threadId, user_id: agentUserId, history: messages.filter(m => m.threadId === threadId) };
+    const userApiKey = currentSettings.openRouterApiKey;
+    const selectedModel = currentSettings.openRouterModel;
+    const payload = {
+      message: trimmed,
+      thread_id: threadId,
+      user_id: agentUserId,
+      history: messages.filter(m => m.threadId === threadId),
+      openRouterApiKey: userApiKey,
+      openRouterModel: selectedModel,
+    };
 
     if (isAwaitingImageDescription) {
       persistMessage({
@@ -205,9 +214,7 @@ const App = () => {
     }
 
     try {
-      const response = await (currentSettings.openRouterEnabled && currentSettings.openRouterApiKey
-        ? callOpenRouter(payload, { openRouterApiKey: currentSettings.openRouterApiKey, openRouterModel: currentSettings.openRouterModel }, currentSettings)
-        : callAgent(payload));
+      const response = await callAgent(payload);
       persistMessage({ type: 'bot', contentType: 'text', content: response.response ?? '...', threadId: response.thread_id ?? threadId });
     } catch (error) {
       persistMessage({ type: 'bot', contentType: 'text', content: `Ошибка: ${(error as Error).message}`, threadId });
