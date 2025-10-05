@@ -183,7 +183,7 @@ def call_ai_query(prompt: str, history: list = None,
         api_key=actual_api_key,
         base_url="https://openrouter.ai/api/v1",
         temperature=0.7,
-        max_tokens=1024,
+        max_tokens=int(os.getenv("MAX_COMPLETION_TOKENS", 4096)),
         default_headers={
             "HTTP-Referer": "http://localhost",
             "X-Title": "IgorekChatBot",
