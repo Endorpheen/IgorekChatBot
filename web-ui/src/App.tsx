@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import MatrixRain from './MatrixRain';
 import './App.css';
 
 import type { ChatMessage, ThreadSettings, ThreadSettingsMap } from './types/chat';
@@ -232,7 +231,6 @@ const App = () => {
 
   return (
     <div className="app-root">
-      <MatrixRain />
       <div className="app-shell">
         <div className="disclaimer-banner">Игорёк очень любит галлюцинации 🤪, будьте осторожны!!! Проверяйте важную информацию!</div>
         <Header 

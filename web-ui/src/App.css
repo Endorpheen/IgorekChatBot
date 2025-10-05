@@ -5,24 +5,15 @@
 #root {
   width: 100%;
   min-height: 100vh;
-  background: #000;
-  color: #00ff90;
-  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
 }
 
 .app-root {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background: #000;
-}
-
-.matrix-rain {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
 }
 
 .app-shell {
