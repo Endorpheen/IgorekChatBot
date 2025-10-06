@@ -269,5 +269,17 @@ async def chat_endpoint(payload: ChatRequest):
         thread_id=current_thread_id,
     )
 
+# -------------------------------
+# ✅ Новый безопасный маршрут
+# -------------------------------
+@app.get("/")
+async def root_redirect():
+    """
+    Главная страница — перенаправляем на WebUI.
+    """
+    if os.path.exists(os.path.join(WEBUI_DIR, "index.html")):
+        return FileResponse(os.path.join(WEBUI_DIR, "index.html"))
+    return {"service": "IgorekChatBot API", "status": "alive"}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=3000)
