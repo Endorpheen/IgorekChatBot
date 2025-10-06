@@ -39,6 +39,11 @@ interface OpenRouterMessage {
   tool_call_id?: string;
 }
 
+interface AgentApiMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 export const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: ChatMessage[]; useTools?: boolean }, settings: { openRouterApiKey?: string; openRouterModel?: string; }, threadSettings: ThreadSettings) => {
   if (!settings.openRouterApiKey) {
     throw new Error('API ключ OpenRouter не указан');
@@ -190,12 +195,41 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
 };
 
 export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
+  const systemPrompt = (typeof window !== 'undefined' ? localStorage.getItem('systemPrompt') : null)?.trim();
+
+  const messages: AgentApiMessage[] = [];
+
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+
+  if (payload.history) {
+    for (const pastMessage of payload.history) {
+      if (pastMessage.contentType !== 'text') {
+        continue;
+      }
+      messages.push({
+        role: pastMessage.type === 'user' ? 'user' : 'assistant',
+        content: pastMessage.content,
+      });
+    }
+  }
+
+  const trimmedMessage = payload.message.trim();
+  if (trimmedMessage) {
+    messages.push({ role: 'user', content: trimmedMessage });
+  }
+
+  const requestBody = messages.length > 0
+    ? { ...payload, messages }
+    : payload;
+
   const response = await fetch(buildApiUrl('/chat'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {

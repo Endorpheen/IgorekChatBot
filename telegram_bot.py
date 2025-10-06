@@ -9,6 +9,7 @@ import re
 import uvicorn
 import requests
 from uuid import uuid4
+from typing import Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
@@ -89,12 +90,23 @@ if os.path.isdir(WEBUI_DIR):
 # -------------------------------
 # Models
 # -------------------------------
+
+
+class ChatMessagePayload(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+    class Config:
+        extra = "ignore"
+
+
 class ChatRequest(BaseModel):
-    message: str
+    message: str | None = None
     thread_id: str | None = None
     history: list | None = None
     open_router_api_key: str | None = Field(default=None, alias="openRouterApiKey")
     open_router_model: str | None = Field(default=None, alias="openRouterModel")
+    messages: list[ChatMessagePayload] | None = None
 
     class Config:
         allow_population_by_field_name = True
@@ -160,9 +172,11 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "x-ai/grok-4-fast:free")
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY не задан — чат работать не будет")
 
-def call_ai_query(prompt: str, history: list = None,
+def call_ai_query(prompt: str | None = None,
+                  history: list | None = None,
                   user_api_key: str | None = None,
-                  user_model: str | None = None) -> str:
+                  user_model: str | None = None,
+                  messages: list[dict[str, str]] | None = None) -> str:
     """
     Вызов модели через LangChain с поддержкой function-calling
     """
@@ -171,6 +185,7 @@ def call_ai_query(prompt: str, history: list = None,
 
     logger.debug(f"[AI QUERY] prompt={prompt}")
     logger.debug(f"[AI QUERY] history={history}")
+    logger.debug(f"[AI QUERY] incoming_messages={messages}")
     logger.debug(f"[AI QUERY] actual_model={actual_model}")
     logger.debug(f"[AI QUERY] actual_api_key={'***masked***' if actual_api_key else None}")
 
@@ -191,17 +206,40 @@ def call_ai_query(prompt: str, history: list = None,
     )
     llm_with_tools = llm.bind_tools([run_code_in_sandbox, browse_website])
 
-    messages = [("system", "You are a helpful AI assistant.")]
-    if history:
-        for msg in history:
-            role = "human" if msg["type"] == "user" else "ai"
-            messages.append((role, msg["content"]))
-    messages.append(("human", prompt))
+    conversation = []
 
-    logger.debug(f"[AI QUERY] Отправляем messages={messages}")
+    if messages:
+        for entry in messages:
+            role = entry.get("role") if isinstance(entry, dict) else None
+            content = entry.get("content") if isinstance(entry, dict) else None
+            if content is None or role is None:
+                logger.warning(f"[AI QUERY] Пропущено сообщение без role/content: {entry}")
+                continue
+
+            if role == "system":
+                conversation.append(("system", content))
+            elif role == "user":
+                conversation.append(("human", content))
+            elif role == "assistant":
+                conversation.append(("ai", content))
+            else:
+                logger.warning(f"[AI QUERY] Неизвестная роль сообщения: {role}")
+    else:
+        conversation = [("system", "You are a helpful AI assistant.")]
+        if history:
+            for msg in history:
+                role = "human" if msg["type"] == "user" else "ai"
+                conversation.append((role, msg["content"]))
+        if prompt is not None:
+            conversation.append(("human", prompt))
+
+    if not conversation:
+        raise RuntimeError("Не удалось сформировать сообщения для модели")
+
+    logger.debug(f"[AI QUERY] Отправляем messages={conversation}")
 
     try:
-        ai_msg = llm_with_tools.invoke(messages)
+        ai_msg = llm_with_tools.invoke(conversation)
 
         logger.debug(f"[AI QUERY] Ответ модели: {ai_msg}")
         logger.debug(f"[AI QUERY] tool_calls={ai_msg.tool_calls}")
@@ -224,12 +262,12 @@ def call_ai_query(prompt: str, history: list = None,
                     ToolMessage(content=str(result), tool_call_id=tool_call["id"])
                 )
 
-        messages.append(ai_msg)
-        messages.extend(tool_outputs)
+        conversation.append(ai_msg)
+        conversation.extend(tool_outputs)
 
-        logger.debug(f"[AI QUERY] Сообщения после tool_calls: {messages}")
+        logger.debug(f"[AI QUERY] Сообщения после tool_calls: {conversation}")
 
-        final_response = llm_with_tools.invoke(messages)
+        final_response = llm_with_tools.invoke(conversation)
         logger.debug(f"[AI QUERY] Итоговый ответ: {final_response}")
         return final_response.content
 
@@ -242,22 +280,35 @@ def call_ai_query(prompt: str, history: list = None,
 # -------------------------------
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(payload: ChatRequest):
-    log_payload = payload.dict(by_alias=True)
+    log_payload = payload.model_dump(by_alias=True)
     if log_payload.get("openRouterApiKey"):
         log_payload["openRouterApiKey"] = "***masked***"
     logger.info("[CHAT ENDPOINT] Входящий payload: %s", log_payload)
 
     message = (payload.message or "").strip()
-    if not message:
+    incoming_messages = None
+    if payload.messages:
+        incoming_messages = []
+        for msg in payload.messages:
+            if msg.content is None:
+                logger.warning("[CHAT ENDPOINT] Пропущено сообщение без content: %s", msg)
+                continue
+            incoming_messages.append({
+                "role": msg.role,
+                "content": msg.content,
+            })
+
+    if not message and not incoming_messages:
         raise HTTPException(status_code=400, detail="Пустое сообщение недопустимо")
 
     current_thread_id = payload.thread_id or str(uuid4())
     try:
         response_text = call_ai_query(
-            message,
-            payload.history,
-            payload.open_router_api_key,
-            payload.open_router_model
+            prompt=message or None,
+            history=payload.history,
+            user_api_key=payload.open_router_api_key,
+            user_model=payload.open_router_model,
+            messages=incoming_messages,
         )
     except RuntimeError as exc:
         logger.error("[CHAT ENDPOINT] RuntimeError: %s", exc)
