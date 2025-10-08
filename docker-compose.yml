@@ -6,6 +6,8 @@ services:
         - VITE_AGENT_API_BASE=${VITE_AGENT_API_BASE}
     container_name: igorekchatbot
     restart: unless-stopped
+    volumes:
+      - ./uploads:/app/uploads
     networks:
       - mcpnet
     environment:

@@ -3,10 +3,11 @@ from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import asyncio
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import uvicorn
 import requests
@@ -50,6 +51,83 @@ UPLOAD_DIR_NAME = os.getenv("UPLOAD_DIR", "uploads")
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR_ABS", Path.cwd() / UPLOAD_DIR_NAME)).resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_URL_PREFIX = os.getenv("UPLOAD_URL_PREFIX", "/uploads")
+UPLOAD_TTL_DAYS = int(os.getenv("UPLOAD_TTL_DAYS", "7"))
+UPLOAD_MAX_TOTAL_MB = int(os.getenv("UPLOAD_MAX_TOTAL_MB", "1024"))
+UPLOAD_CLEAN_INTERVAL_SECONDS = int(os.getenv("UPLOAD_CLEAN_INTERVAL_SECONDS", "3600"))
+UPLOAD_MAX_TOTAL_BYTES = UPLOAD_MAX_TOTAL_MB * 1024 * 1024
+
+cleanup_task: asyncio.Task | None = None
+
+
+def _delete_file(path: Path) -> bool:
+    try:
+        path.unlink()
+        return True
+    except OSError as exc:
+        logger.warning("[UPLOAD CLEAN] Не удалось удалить файл %s: %s", path, exc)
+        return False
+
+
+def _cleanup_uploads_once() -> tuple[int, int]:
+    removed = 0
+    now = datetime.utcnow()
+    ttl_delta = timedelta(days=UPLOAD_TTL_DAYS) if UPLOAD_TTL_DAYS > 0 else None
+
+    if ttl_delta:
+        cutoff = now - ttl_delta
+        for path in list(UPLOAD_DIR.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                mtime = datetime.utcfromtimestamp(path.stat().st_mtime)
+            except OSError as exc:
+                logger.warning("[UPLOAD CLEAN] Не удалось получить время файла %s: %s", path, exc)
+                continue
+            if mtime < cutoff:
+                if _delete_file(path):
+                    removed += 1
+
+    files: list[tuple[Path, int, float]] = []
+    total_size = 0
+    for path in UPLOAD_DIR.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            logger.warning("[UPLOAD CLEAN] Не удалось получить статистику файла %s: %s", path, exc)
+            continue
+        files.append((path, stat.st_size, stat.st_mtime))
+        total_size += stat.st_size
+
+    if UPLOAD_MAX_TOTAL_BYTES > 0 and total_size > UPLOAD_MAX_TOTAL_BYTES:
+        files.sort(key=lambda item: item[2])  # oldest first
+        index = 0
+        while total_size > UPLOAD_MAX_TOTAL_BYTES and index < len(files):
+            path, size, _ = files[index]
+            index += 1
+            if _delete_file(path):
+                removed += 1
+                total_size -= size
+
+    logger.info(
+        "[UPLOAD CLEAN] removed=%s total_size=%.2f MB",
+        removed,
+        total_size / (1024 * 1024),
+    )
+
+    return removed, total_size
+
+
+async def _cleanup_uploads_periodically() -> None:
+    loop = asyncio.get_running_loop()
+    interval = max(UPLOAD_CLEAN_INTERVAL_SECONDS, 60)
+    while True:
+        try:
+            await loop.run_in_executor(None, _cleanup_uploads_once)
+        except Exception as exc:  # pragma: no cover
+            logger.error("[UPLOAD CLEAN] Ошибка при очистке: %s", exc, exc_info=True)
+        await asyncio.sleep(interval)
 
 app = FastAPI(max_request_size=MAX_IMAGE_UPLOAD_BYTES + 1024 * 1024)
 
@@ -201,6 +279,32 @@ def browse_website(url: str) -> str:
     except requests.exceptions.RequestException as e:
         logger.error(f"[TOOL] Ошибка при обращении к браузеру: {e}")
         return "Ошибка: не удалось связаться с сервисом браузера."
+
+
+@app.on_event("startup")
+async def _startup_cleanup_task() -> None:
+    global cleanup_task
+    if UPLOAD_CLEAN_INTERVAL_SECONDS <= 0:
+        return
+    cleanup_task = asyncio.create_task(_cleanup_uploads_periodically())
+    logger.info(
+        "[UPLOAD CLEAN] Фоновая очистка запущена: interval=%ss ttl_days=%s max_total_mb=%s",
+        UPLOAD_CLEAN_INTERVAL_SECONDS,
+        UPLOAD_TTL_DAYS,
+        UPLOAD_MAX_TOTAL_MB,
+    )
+
+
+@app.on_event("shutdown")
+async def _shutdown_cleanup_task() -> None:
+    global cleanup_task
+    if cleanup_task:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+        cleanup_task = None
 
 # -------------------------------
 # LangChain
@@ -616,6 +720,8 @@ async def analyze_image_endpoint(
         if exc.status_code == 502 and "does not support" in str(exc.detail).lower():
             raise HTTPException(status_code=400, detail="Выбранная модель не поддерживает работу с изображениями.") from exc
         raise
+
+    logger.info("[IMAGE ANALYSIS] Ответ модели: %s", response_text)
 
     images_payload = response_images or None
 
