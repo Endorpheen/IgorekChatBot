@@ -1,0 +1,11 @@
+# robots.txt для IgorekChatBot
+# Разрешаем индексировать сам сайт и веб-интерфейс
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /chat
+Disallow: /sandbox_executor/
+Disallow: /browser/
+
+# Указываем ссылку на карту сайта
+Sitemap: https://igorekchatbot.ru/sitemap.xml

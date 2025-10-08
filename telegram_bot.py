@@ -321,6 +321,45 @@ async def chat_endpoint(payload: ChatRequest):
     )
 
 # -------------------------------
+# ✅ Google Search Console верификация
+# -------------------------------
+@app.get("/google{rest_of_path:path}")
+async def serve_google_verification(rest_of_path: str):
+    """
+    Отдаёт HTML-файлы верификации Google (googleXXXX.html)
+    """
+    file_path = os.path.join(WEBUI_DIR, f"google{rest_of_path}")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Not Found")
+
+# -------------------------------
+# Sitemap для Google и других поисковиков
+# -------------------------------
+@app.get("/sitemap.xml")
+async def serve_sitemap():
+    """
+    Отдаёт sitemap.xml для поисковых систем
+    """
+    file_path = os.path.join(WEBUI_DIR, "sitemap.xml")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Not Found")
+
+# -------------------------------
+# Robots.txt для поисковиков
+# -------------------------------
+@app.get("/robots.txt")
+async def serve_robots():
+    """
+    Отдаёт robots.txt для поисковых систем
+    """
+    file_path = os.path.join(WEBUI_DIR, "robots.txt")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Not Found")
+
+# -------------------------------
 # ✅ Новый безопасный маршрут
 # -------------------------------
 @app.get("/")
