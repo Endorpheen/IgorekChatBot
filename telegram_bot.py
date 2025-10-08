@@ -384,37 +384,38 @@ def call_ai_query(prompt: str | None = None,
     logger.debug(f"[AI QUERY] Отправляем messages={conversation}")
 
     try:
-        ai_msg = llm_with_tools.invoke(conversation)
+        max_tool_steps = 5
+        for step in range(1, max_tool_steps + 1):
+            ai_msg = llm_with_tools.invoke(conversation)
 
-        logger.debug(f"[AI QUERY] Ответ модели: {ai_msg}")
-        logger.debug(f"[AI QUERY] tool_calls={ai_msg.tool_calls}")
+            logger.debug(f"[AI QUERY] Ответ модели (step={step}): {ai_msg}")
+            logger.debug(f"[AI QUERY] tool_calls={ai_msg.tool_calls}")
 
-        if not ai_msg.tool_calls:
-            return ai_msg.content
+            if not ai_msg.tool_calls:
+                return ai_msg.content
 
-        # Если есть вызовы инструментов, обрабатываем их
-        tool_outputs = []
-        for tool_call in ai_msg.tool_calls:
-            logger.info(f"[AI QUERY] Вызов функции: {tool_call['name']} args={tool_call['args']}")
-            if tool_call['name'] == 'run_code_in_sandbox':
-                result = run_code_in_sandbox.run(tool_call['args'])
-                tool_outputs.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
-            elif tool_call['name'] == 'browse_website':
-                result = browse_website.run(tool_call['args'])
-                tool_outputs.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
+            conversation.append(ai_msg)
 
-        conversation.append(ai_msg)
-        conversation.extend(tool_outputs)
+            tool_outputs: List[ToolMessage] = []
+            for tool_call in ai_msg.tool_calls:
+                tool_name = tool_call.get('name') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
+                logger.info("[TOOL RECURSION] step=%s call=%s", step, tool_name)
+                tool_args = tool_call.get('args') if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
+                if tool_name == 'run_code_in_sandbox':
+                    result = run_code_in_sandbox.run(tool_args)
+                    tool_outputs.append(ToolMessage(content=str(result), tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)))
+                elif tool_name == 'browse_website':
+                    result = browse_website.run(tool_args)
+                    tool_outputs.append(ToolMessage(content=str(result), tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)))
+                else:
+                    logger.warning("[TOOL RECURSION] step=%s неизвестный инструмент: %s", step, tool_name)
+                    tool_outputs.append(ToolMessage(content=f"Unsupported tool: {tool_name}", tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)))
 
-        logger.debug(f"[AI QUERY] Сообщения после tool_calls: {conversation}")
+            conversation.extend(tool_outputs)
+            logger.debug(f"[AI QUERY] Сообщения после tool_calls шага {step}: {conversation}")
 
-        final_response = llm_with_tools.invoke(conversation)
-        logger.debug(f"[AI QUERY] Итоговый ответ: {final_response}")
-        return final_response.content
+        logger.error("[TOOL RECURSION] Превышен лимит последовательных вызовов инструментов")
+        return "Превышен лимит последовательных вызовов инструментов."
 
     except Exception as e:
         logger.error(f"[AI QUERY] Ошибка LangChain API: {e}", exc_info=True)
