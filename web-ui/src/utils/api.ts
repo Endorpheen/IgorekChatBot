@@ -255,12 +255,14 @@ export interface ImageUploadResponse {
   response: string;
   thread_id: string;
   image?: {
-    content: string;
-    content_type: string;
+    filename: string;
+    url: string;
+    content_type?: string;
   };
   images?: {
-    content: string;
-    content_type: string;
+    filename: string;
+    url: string;
+    content_type?: string;
   }[];
 }
 

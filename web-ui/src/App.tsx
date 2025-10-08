@@ -21,6 +21,7 @@ interface PendingAttachment {
   file: File;
   previewUrl: string;
   name: string;
+  mimeType: string;
 }
 
 const MAX_PENDING_ATTACHMENTS = 4;
@@ -93,6 +94,7 @@ const App = () => {
         file,
         previewUrl: previews[index],
         name: file.name,
+        mimeType: file.type,
       }));
       setPendingAttachments(prev => [...prev, ...attachmentsToAdd]);
     } catch (error) {
@@ -193,21 +195,7 @@ const App = () => {
       persistMessage({ type: 'user', contentType: 'text', content: trimmed, threadId });
     }
 
-    if (hasImages) {
-      attachmentsToSend.forEach(attachment => {
-        persistMessage({
-          type: 'user',
-          contentType: 'image',
-          content: attachment.previewUrl,
-          threadId,
-        });
-      });
-    }
-
     setInput('');
-    if (hasImages) {
-      setPendingAttachments([]);
-    }
 
     if (isCommand && trimmed === '/help') {
       persistMessage({
@@ -227,6 +215,8 @@ const App = () => {
 
     setIsTyping(true);
     setIsAwaitingImageDescription(hasImages);
+
+    let uploadSucceeded = false;
 
     try {
       if (shouldSendText) {
@@ -279,12 +269,30 @@ const App = () => {
           });
 
           const targetThreadId = response.thread_id ?? threadId;
+          const imagePayloads = response.images ?? (response.image ? [response.image] : []);
+
+          imagePayloads.forEach(image => {
+            if (!image?.url || !image.filename) {
+              return;
+            }
+            persistMessage({
+              type: 'user',
+              contentType: 'image',
+              content: image.url,
+              threadId: targetThreadId,
+              url: image.url,
+              fileName: image.filename,
+              mimeType: image.content_type,
+            });
+          });
+
           persistMessage({
             type: 'bot',
             contentType: 'text',
             content: response.response ?? 'Не удалось получить описание изображений.',
             threadId: targetThreadId,
           });
+          uploadSucceeded = true;
         } catch (error) {
           console.error('Image description error:', error);
           persistMessage({
@@ -298,6 +306,9 @@ const App = () => {
     } finally {
       setIsTyping(false);
       setIsAwaitingImageDescription(false);
+      if (uploadSucceeded) {
+        setPendingAttachments([]);
+      }
     }
   };
 

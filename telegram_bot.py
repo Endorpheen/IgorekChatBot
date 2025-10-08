@@ -6,10 +6,13 @@ from fastapi.responses import FileResponse
 import logging
 import os
 import re
+from datetime import datetime
+from pathlib import Path
 import uvicorn
 import requests
 import base64
 import json
+import mimetypes
 from uuid import uuid4
 from typing import Literal, Dict, List
 from dotenv import load_dotenv
@@ -20,6 +23,11 @@ from langchain_core.pydantic_v1 import BaseModel as LangchainBaseModel, Field as
 from langchain.tools import tool
 from langchain_core.messages import ToolMessage
 
+try:
+    import multipart  # type: ignore
+except ImportError:  # pragma: no cover - fallback when python-multipart не установлен
+    multipart = None
+
 load_dotenv()
 
 logging.basicConfig(
@@ -28,7 +36,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger("telegram_bot")
 
-app = FastAPI()
+MAX_IMAGE_UPLOAD_MB = int(os.getenv("MAX_IMAGE_UPLOAD_MB", "20"))
+MAX_IMAGE_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_MB * 1024 * 1024
+os.environ.setdefault("PYTHON_MULTIPART_LIMIT", str(MAX_IMAGE_UPLOAD_BYTES))
+
+if multipart and hasattr(multipart, "multipart"):
+    if hasattr(multipart.multipart, "MAX_MEMORY_SIZE"):
+        multipart.multipart.MAX_MEMORY_SIZE = MAX_IMAGE_UPLOAD_BYTES
+    if hasattr(multipart.multipart, "DEFAULT_MAX_MEMORY_SIZE"):
+        multipart.multipart.DEFAULT_MAX_MEMORY_SIZE = MAX_IMAGE_UPLOAD_BYTES
+
+UPLOAD_DIR_NAME = os.getenv("UPLOAD_DIR", "uploads")
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR_ABS", Path.cwd() / UPLOAD_DIR_NAME)).resolve()
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_URL_PREFIX = os.getenv("UPLOAD_URL_PREFIX", "/uploads")
+
+app = FastAPI(max_request_size=MAX_IMAGE_UPLOAD_BYTES + 1024 * 1024)
 
 ALLOW_ORIGINS = [
     "http://localhost",
@@ -89,6 +112,8 @@ if os.path.isdir(WEBUI_DIR):
             return FileResponse(file_path)
         raise HTTPException(status_code=404, detail="Not Found")
 
+app.mount(UPLOAD_URL_PREFIX, StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
 # -------------------------------
 # Models
 # -------------------------------
@@ -118,8 +143,9 @@ class ChatResponse(BaseModel):
 
 
 class ImagePayload(BaseModel):
-    content: str
-    content_type: str
+    filename: str
+    url: str
+    content_type: str | None = None
 
 
 class ImageAnalysisResponse(BaseModel):
@@ -318,18 +344,36 @@ def _build_image_conversation(history: list[dict],
         role = entry.get("type")
         content_type = entry.get("contentType")
         content = entry.get("content")
-        if not content or role not in {"user", "bot"}:
+
+        if role not in {"user", "bot"}:
             continue
 
         if content_type == "image" and role == "user":
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Анализируй это изображение."},
-                    {"type": "image_url", "image_url": {"url": content}}
-                ]
-            })
-        elif content_type == "text":
+            data_url = None
+            if isinstance(content, str) and content.startswith("data:"):
+                data_url = content
+            else:
+                file_name = entry.get("fileName") or entry.get("filename")
+                if file_name:
+                    file_path = UPLOAD_DIR / file_name
+                    if file_path.exists():
+                        mime_type = entry.get("mimeType") or entry.get("mime_type") or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+                        try:
+                            with open(file_path, "rb") as stored_file:
+                                encoded = base64.b64encode(stored_file.read()).decode("utf-8")
+                                data_url = f"data:{mime_type};base64,{encoded}"
+                        except OSError as exc:
+                            logger.warning("[IMAGE ANALYSIS] Не удалось прочитать файл истории %s: %s", file_path, exc)
+
+            if data_url:
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Анализируй это изображение."},
+                        {"type": "image_url", "image_url": {"url": data_url}}
+                    ]
+                })
+        elif content_type == "text" and isinstance(content, str):
             messages.append({
                 "role": "user" if role == "user" else "assistant",
                 "content": content
@@ -516,16 +560,45 @@ async def analyze_image_endpoint(
     for upload in files:
         if not upload.content_type or not upload.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail=f"Файл {upload.filename or ''} не является изображением")
+
+        original_name = upload.filename or "image"
+        stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(original_name).stem) or "image"
+        stem = stem[:40]
+        ext = Path(original_name).suffix
+        if not ext:
+            guessed = mimetypes.guess_extension(upload.content_type)
+            ext = guessed or ""
+        if ext and not ext.startswith('.'):
+            ext = f".{ext}"
+        if not ext:
+            ext = ".bin"
+
+        unique_name = f"{datetime.utcnow():%Y%m%d%H%M%S}_{uuid4().hex[:8]}_{stem}{ext}"
+        file_path = UPLOAD_DIR / unique_name
+
         try:
             file_bytes = await upload.read()
         except Exception as exc:
             logger.error("[IMAGE ANALYSIS] Не удалось прочитать файл %s: %s", upload.filename, exc)
             raise HTTPException(status_code=500, detail="Не удалось прочитать файл") from exc
+        finally:
+            await upload.close()
+
+        try:
+            with open(file_path, "wb") as stored_file:
+                stored_file.write(file_bytes)
+        except OSError as exc:
+            logger.error("[IMAGE ANALYSIS] Не удалось сохранить файл %s: %s", file_path, exc)
+            raise HTTPException(status_code=500, detail="Не удалось сохранить файл") from exc
 
         encoded = base64.b64encode(file_bytes).decode("utf-8")
         data_url = f"data:{upload.content_type};base64,{encoded}"
         encoded_images.append(data_url)
-        response_images.append(ImagePayload(content=data_url, content_type=upload.content_type))
+        response_images.append(ImagePayload(
+            filename=unique_name,
+            url=f"{UPLOAD_URL_PREFIX.rstrip('/')}/{unique_name}",
+            content_type=upload.content_type,
+        ))
 
     messages = _build_image_conversation(
         history=history_payload,

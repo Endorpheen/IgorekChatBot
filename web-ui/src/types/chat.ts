@@ -8,6 +8,9 @@ export interface ChatMessage {
   content: string;
   threadId: string;
   createdAt: string;
+  fileName?: string;
+  url?: string;
+  mimeType?: string;
 }
 
 export interface ThreadNameMap {

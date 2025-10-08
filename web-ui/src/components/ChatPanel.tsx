@@ -101,15 +101,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         {messages.map((msg) => (
           <div key={msg.id} className={`chat-message chat-message--${msg.type}`}>
             <span className="chat-prefix">{msg.type === 'user' ? '>' : '$'}</span>
-            {msg.contentType === 'text' ? (
-              <div className="chat-content">
-                <ReactMarkdown components={markdownComponents}>
-                  {msg.content}
-                </ReactMarkdown>
-              </div>
-            ) : (
-              <img src={msg.content} alt="Uploaded image" className="chat-image" />
-            )}
+          {msg.contentType === 'text' ? (
+            <div className="chat-content">
+              <ReactMarkdown components={markdownComponents}>
+                {msg.content}
+              </ReactMarkdown>
+            </div>
+          ) : (
+              <img
+                src={msg.url ?? msg.content}
+                alt={msg.fileName ?? 'Uploaded image'}
+                className="chat-image"
+              />
+          )}
             <div className="message-actions">
               <button
                 className="menu-button"
