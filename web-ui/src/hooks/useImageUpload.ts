@@ -1,21 +1,27 @@
 import { useRef } from 'react';
 
 interface UseImageUploadProps {
-  onImageUpload: (file: File) => Promise<void> | void;
+  onImageUpload: (files: File[]) => Promise<void> | void;
 }
 
 export const useImageUpload = ({ onImageUpload }: UseImageUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) {
+    const files = event.target.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const images = Array.from(files).filter(file => file.type.startsWith('image/'));
+    if (images.length === 0) {
       alert('Пожалуйста, выберите изображение.');
+      event.target.value = '';
       return;
     }
 
     try {
-      await onImageUpload(file);
+      await onImageUpload(images);
     } finally {
       event.target.value = '';
     }

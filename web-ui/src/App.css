@@ -692,6 +692,79 @@
   border: 1px solid rgba(0, 255, 144, 0.25);
 }
 
+.attachment-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.attachment-preview-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 96px;
+}
+
+.attachment-thumb {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 255, 144, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 12px -4px rgba(15, 118, 110, 0.45);
+}
+
+.attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  color: #f87171;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.attachment-remove:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.35);
+  transform: scale(1.05);
+}
+
+.attachment-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.attachment-remove .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.attachment-name {
+  max-width: 96px;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.72);
+  text-align: center;
+  word-break: break-word;
+}
+
 .chat-input-container .chat-input {
   background: transparent !important;
   border: none !important;

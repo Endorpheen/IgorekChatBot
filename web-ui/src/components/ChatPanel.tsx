@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import { Command, Mic, Send, Upload, MoreVertical, Check } from 'lucide-react';
+import { Command, Mic, Send, Upload, MoreVertical, Check, X } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import type { ChatMessage } from '../types/chat';
 
@@ -19,6 +19,8 @@ interface ChatPanelProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   triggerFileInput: () => void;
   COMMON_COMMANDS: string[];
+  pendingAttachments: Array<{ id: string; previewUrl: string; name: string }>;
+  removeAttachment: (id: string) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -35,7 +37,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   messagesEndRef,
   fileInputRef,
   triggerFileInput,
-  COMMON_COMMANDS
+  COMMON_COMMANDS,
+  pendingAttachments,
+  removeAttachment,
 }) => {
   const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -159,6 +163,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       </div>
 
       <form className="chat-form" onSubmit={handleSubmit}>
+        {pendingAttachments.length > 0 && (
+          <div className="attachment-preview-list">
+            {pendingAttachments.map(attachment => (
+              <div key={attachment.id} className="attachment-preview-item">
+                <div className="attachment-thumb">
+                  <img src={attachment.previewUrl} alt={`Предпросмотр ${attachment.name}`} />
+                  <button
+                    type="button"
+                    className="attachment-remove"
+                    onClick={() => removeAttachment(attachment.id)}
+                    title="Убрать изображение"
+                    disabled={isTyping}
+                  >
+                    <X className="icon" />
+                  </button>
+                </div>
+                <span className="attachment-name" title={attachment.name}>{attachment.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="chat-input-container">
           <input
             type="text"
@@ -191,6 +216,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             type="file"
             accept="image/*"
             onChange={handleImageUpload}
+            multiple
             hidden
           />
           <button type="submit" className="send-button" disabled={isTyping} title="Отправить">

@@ -241,12 +241,13 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
   return data;
 };
 
-interface UploadImageParams {
-  file: File;
+interface UploadImagesParams {
+  files: File[];
   threadId: string;
   history: ChatMessage[];
   settings: ThreadSettings;
   systemPrompt?: string | null;
+  prompt?: string;
 }
 
 export interface ImageUploadResponse {
@@ -257,17 +258,26 @@ export interface ImageUploadResponse {
     content: string;
     content_type: string;
   };
+  images?: {
+    content: string;
+    content_type: string;
+  }[];
 }
 
-export const uploadImageForAnalysis = async ({ file, threadId, history, settings, systemPrompt }: UploadImageParams): Promise<ImageUploadResponse> => {
+export const uploadImagesForAnalysis = async ({ files, threadId, history, settings, systemPrompt, prompt }: UploadImagesParams): Promise<ImageUploadResponse> => {
   const formData = new FormData();
-  formData.append('file', file);
+  files.forEach(file => {
+    formData.append('files', file);
+  });
   formData.append('thread_id', threadId);
   formData.append('history', JSON.stringify(history));
 
   const historyLimit = Math.max(1, Math.min(50, settings.historyMessageCount ?? 5));
   formData.append('history_message_count', String(historyLimit));
 
+  if (prompt !== undefined) {
+    formData.append('message', prompt ?? '');
+  }
   if (systemPrompt && systemPrompt.trim()) {
     formData.append('system_prompt', systemPrompt);
   }

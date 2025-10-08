@@ -11,7 +11,7 @@ import requests
 import base64
 import json
 from uuid import uuid4
-from typing import Literal, Dict
+from typing import Literal, Dict, List
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ConfigDict
 from langchain_openai import ChatOpenAI
@@ -126,7 +126,8 @@ class ImageAnalysisResponse(BaseModel):
     status: str
     response: str
     thread_id: str
-    image: ImagePayload
+    image: ImagePayload | None = None
+    images: List[ImagePayload] | None = None
 
 # -------------------------------
 # LangChain Tools
@@ -294,7 +295,8 @@ def _build_image_conversation(history: list[dict],
                               thread_id: str,
                               history_limit: int,
                               system_prompt: str | None,
-                              image_data_url: str) -> list[dict]:
+                              image_data_urls: List[str],
+                              prompt: str | None) -> list[dict]:
     """
     Формирует набор сообщений для OpenRouter, включая историю треда и новое изображение.
     """
@@ -333,15 +335,22 @@ def _build_image_conversation(history: list[dict],
                 "content": content
             })
 
+    user_prompt = (prompt or "").strip() or "Опиши изображения подробно, извлеки весь текст если есть."
+
+    final_content: List[dict] = [{
+        "type": "text",
+        "text": user_prompt
+    }]
+
+    for image_url in image_data_urls:
+        final_content.append({
+            "type": "image_url",
+            "image_url": {"url": image_url}
+        })
+
     messages.append({
         "role": "user",
-        "content": [
-            {
-                "type": "text",
-                "text": "Опиши это изображение подробно, извлеки весь текст если есть."
-            },
-            {"type": "image_url", "image_url": {"url": image_data_url}}
-        ]
+        "content": final_content
     })
 
     return messages
@@ -459,23 +468,26 @@ async def chat_endpoint(payload: ChatRequest):
 @app.post("/image/analyze", response_model=ImageAnalysisResponse)
 async def analyze_image_endpoint(
     request: Request,
-    file: UploadFile = File(...),
+    files: List[UploadFile] | None = File(default=None),
     thread_id: str = Form(...),
+    message: str = Form(""),
     history: str = Form("[]"),
     open_router_api_key: str | None = Form(default=None),
     open_router_model: str | None = Form(default=None),
     system_prompt: str | None = Form(default=None),
     history_message_count: int = Form(default=5),
 ):
-    logger.info(
-        "[IMAGE ANALYSIS] Получен запрос: thread_id=%s, filename=%s, content_type=%s",
-        thread_id,
-        file.filename,
-        file.content_type,
-    )
+    files = files or []
 
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Поддерживаются только изображения")
+    if not files and not message.strip():
+        raise HTTPException(status_code=422, detail="Требуется текст или хотя бы одно изображение")
+
+    logger.info(
+        "[IMAGE ANALYSIS] Запрос: thread_id=%s, файлов=%s, has_text=%s",
+        thread_id,
+        len(files),
+        bool(message.strip()),
+    )
 
     actual_api_key = open_router_api_key or OPENROUTER_API_KEY
     sanitized_model = (open_router_model or "").strip()
@@ -498,31 +510,48 @@ async def analyze_image_endpoint(
         logger.error("[IMAGE ANALYSIS] Некорректный формат history: %s", exc)
         raise HTTPException(status_code=400, detail="Некорректный формат истории") from exc
 
-    try:
-        file_bytes = await file.read()
-    except Exception as exc:
-        logger.error("[IMAGE ANALYSIS] Не удалось прочитать файл: %s", exc)
-        raise HTTPException(status_code=500, detail="Не удалось прочитать файл") from exc
+    encoded_images: List[str] = []
+    response_images: List[ImagePayload] = []
 
-    encoded = base64.b64encode(file_bytes).decode("utf-8")
-    data_url = f"data:{file.content_type};base64,{encoded}"
+    for upload in files:
+        if not upload.content_type or not upload.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail=f"Файл {upload.filename or ''} не является изображением")
+        try:
+            file_bytes = await upload.read()
+        except Exception as exc:
+            logger.error("[IMAGE ANALYSIS] Не удалось прочитать файл %s: %s", upload.filename, exc)
+            raise HTTPException(status_code=500, detail="Не удалось прочитать файл") from exc
+
+        encoded = base64.b64encode(file_bytes).decode("utf-8")
+        data_url = f"data:{upload.content_type};base64,{encoded}"
+        encoded_images.append(data_url)
+        response_images.append(ImagePayload(content=data_url, content_type=upload.content_type))
 
     messages = _build_image_conversation(
         history=history_payload,
         thread_id=thread_id,
         history_limit=history_message_count,
         system_prompt=system_prompt,
-        image_data_url=data_url,
+        image_data_urls=encoded_images,
+        prompt=message,
     )
 
     origin = request.headers.get("Origin") or request.headers.get("Referer")
-    response_text = _call_openrouter_for_image(messages, actual_api_key, actual_model, origin)
+    try:
+        response_text = _call_openrouter_for_image(messages, actual_api_key, actual_model, origin)
+    except HTTPException as exc:
+        if exc.status_code == 502 and "does not support" in str(exc.detail).lower():
+            raise HTTPException(status_code=400, detail="Выбранная модель не поддерживает работу с изображениями.") from exc
+        raise
+
+    images_payload = response_images or None
 
     return ImageAnalysisResponse(
         status="Image processed",
         response=response_text,
         thread_id=thread_id,
-        image=ImagePayload(content=data_url, content_type=file.content_type or "image/*"),
+        image=images_payload[0] if images_payload else None,
+        images=images_payload,
     )
 
 # -------------------------------

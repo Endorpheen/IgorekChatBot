@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import './App.css';
 
 import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
-import { callAgent, uploadImageForAnalysis } from './utils/api';
+import { callAgent, uploadImagesForAnalysis } from './utils/api';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -15,6 +15,15 @@ import ThreadsPanel from './components/ThreadsPanel';
 import ChatPanel from './components/ChatPanel';
 import Footer from './components/Footer';
 import SettingsPanel from './components/SettingsPanel';
+
+interface PendingAttachment {
+  id: string;
+  file: File;
+  previewUrl: string;
+  name: string;
+}
+
+const MAX_PENDING_ATTACHMENTS = 4;
 
 const App = () => {
   const {
@@ -45,6 +54,7 @@ const App = () => {
   const [isAwaitingImageDescription, setIsAwaitingImageDescription] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [musicMuted, setMusicMuted] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
@@ -55,10 +65,48 @@ const App = () => {
     onError: (error) => console.error('Speech recognition error:', error),
   });
 
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error('Не удалось прочитать файл'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePendingImages = async (files: File[]) => {
+    if (pendingAttachments.length >= MAX_PENDING_ATTACHMENTS) {
+      alert(`Можно прикрепить не более ${MAX_PENDING_ATTACHMENTS} изображений за раз.`);
+      return;
+    }
+
+    const availableSlots = MAX_PENDING_ATTACHMENTS - pendingAttachments.length;
+    const filesToProcess = files.slice(0, availableSlots);
+    if (filesToProcess.length < files.length) {
+      alert(`Добавлены только первые ${availableSlots} изображения. Остальные игнорированы.`);
+    }
+
+    try {
+      const previews = await Promise.all(filesToProcess.map(readFileAsDataUrl));
+      const attachmentsToAdd = filesToProcess.map((file, index) => ({
+        id: uuidv4(),
+        file,
+        previewUrl: previews[index],
+        name: file.name,
+      }));
+      setPendingAttachments(prev => [...prev, ...attachmentsToAdd]);
+    } catch (error) {
+      console.error('Ошибка чтения изображения:', error);
+      alert('Не удалось подготовить изображение. Попробуйте снова.');
+    }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
+  };
+
   const { fileInputRef, handleImageUpload, triggerFileInput } = useImageUpload({
-    onImageUpload: async (file: File) => {
-      await describeImage(file);
-    },
+    onImageUpload: handlePendingImages,
   });
 
   const { audioRef, sendAudioRef } = useAudioPlayer({ musicMuted });
@@ -69,63 +117,6 @@ const App = () => {
 
   const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
     setThreadSettings((prev: ThreadSettingsMap) => ({ ...prev, [threadId]: { ...getCurrentThreadSettings(), ...updates } }));
-  };
-
-  const describeImage = async (file: File) => {
-    setIsTyping(true);
-    setIsAwaitingImageDescription(true);
-    const currentSettings = getCurrentThreadSettings();
-    if (!currentSettings.openRouterEnabled || !currentSettings.openRouterApiKey) {
-      persistMessage({
-        type: 'bot',
-        contentType: 'text',
-        content: 'Для анализа изображений включите OpenRouter в настройках этого треда.',
-        threadId,
-      });
-      setIsTyping(false);
-      setIsAwaitingImageDescription(false);
-      return;
-    }
-
-    try {
-      const historyMessages = messages.filter(msg => msg.threadId === threadId);
-      const systemPrompt = localStorage.getItem('systemPrompt');
-      const response = await uploadImageForAnalysis({
-        file,
-        threadId,
-        history: historyMessages,
-        settings: currentSettings,
-        systemPrompt,
-      });
-      const targetThreadId = response.thread_id ?? threadId;
-
-      if (response.image?.content) {
-        persistMessage({
-          type: 'user',
-          contentType: 'image',
-          content: response.image.content,
-          threadId: targetThreadId,
-        });
-      }
-
-      persistMessage({
-        type: 'bot',
-        contentType: 'text',
-        content: response.response ?? 'Не удалось получить описание изображения.',
-        threadId: targetThreadId,
-      });
-    } catch (error) {
-      console.error('Image description error:', error);
-      persistMessage({
-        type: 'bot',
-        contentType: 'text',
-        content: `Ошибка при анализе изображения: ${(error as Error).message}`,
-        threadId,
-      });
-    } finally {
-      setIsTyping(false);
-      setIsAwaitingImageDescription(false);
-    }
   };
 
   useEffect(() => {
@@ -163,24 +154,6 @@ const App = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    persistMessage({ type: 'user', contentType: 'text', content: trimmed, threadId });
-    setInput('');
-    setIsTyping(true);
-
-    const currentSettings = getCurrentThreadSettings();
-    const userApiKey = currentSettings.openRouterApiKey;
-    const selectedModel = currentSettings.openRouterModel;
-    const payload = {
-      message: trimmed,
-      thread_id: threadId,
-      user_id: agentUserId,
-      history: messages.filter(m => m.threadId === threadId),
-      openRouterApiKey: userApiKey,
-      openRouterModel: selectedModel,
-    };
 
     if (isAwaitingImageDescription) {
       persistMessage({
@@ -189,31 +162,142 @@ const App = () => {
         content: 'Пожалуйста, дождитесь завершения анализа изображения.',
         threadId,
       });
-      setIsTyping(false);
       return;
     }
 
-    if (COMMON_COMMANDS.includes(trimmed)) {
-      if (trimmed === '/help') {
-        persistMessage({
-          type: 'bot',
-          contentType: 'text',
-          content: `Igorek - ваш ИИ-ассистент для выполнения задач\n\n**Функции веб-интерфейса:**\n- **Чат**: Отправляйте текстовые сообщения боту через поле ввода или голосовой ввод (кнопка микрофона).\n- **Темы**: Создавайте новые темы чатов кнопкой "Новый тред" для организации разговоров.\n- **Команды**: Используйте /help для этого сообщения.\n- **TTS**: Включите/выключите озвучивание ответов бота кнопкой "TTS включен/выключен".\n- **Голосовой ввод**: Кнопка микрофона для голосового ввода сообщений.\n- **Очистка состояния**: Кнопка с иконкой питания очищает локальное хранилище и перезагружает интерфейс.\n- **Подписка**: Кнопка "Подпишись на нас" ведет на Telegram канал.\n- **История**: Сообщения сохраняются в браузере, можно переключаться между темами.\n\nВведите команду или запрос для взаимодействия.`,
-          threadId,
-        });
-        setInput('');
-        setIsTyping(false);
-        return;
-      }
+    const trimmed = input.trim();
+    const hasImages = pendingAttachments.length > 0;
+
+    if (!trimmed && !hasImages) {
+      return;
     }
 
+    const isCommand = !!trimmed && COMMON_COMMANDS.includes(trimmed);
+    if (isCommand && hasImages) {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: 'Команды нельзя отправлять вместе с изображениями. Отправьте сначала команду, затем прикрепите файл.',
+        threadId,
+      });
+      return;
+    }
+
+    const attachmentsToSend = [...pendingAttachments];
+    const currentSettings = getCurrentThreadSettings();
+    const userApiKey = currentSettings.openRouterApiKey;
+    const selectedModel = currentSettings.openRouterModel;
+    const historyMessages = messages.filter(msg => msg.threadId === threadId);
+
+    if (trimmed) {
+      persistMessage({ type: 'user', contentType: 'text', content: trimmed, threadId });
+    }
+
+    if (hasImages) {
+      attachmentsToSend.forEach(attachment => {
+        persistMessage({
+          type: 'user',
+          contentType: 'image',
+          content: attachment.previewUrl,
+          threadId,
+        });
+      });
+    }
+
+    setInput('');
+    if (hasImages) {
+      setPendingAttachments([]);
+    }
+
+    if (isCommand && trimmed === '/help') {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: `Igorek - ваш ИИ-ассистент для выполнения задач\n\n**Функции веб-интерфейса:**\n- **Чат**: Отправляйте текстовые сообщения боту через поле ввода или голосовой ввод (кнопка микрофона).\n- **Темы**: Создавайте новые темы чатов кнопкой "Новый тред" для организации разговоров.\n- **Команды**: Используйте /help для этого сообщения.\n- **TTS**: Включите/выключите озвучивание ответов бота кнопкой "TTS включен/выключен".\n- **Голосовой ввод**: Кнопка микрофона для голосового ввода сообщений.\n- **Очистка состояния**: Кнопка с иконкой питания очищает локальное хранилище и перезагружает интерфейс.\n- **Подписка**: Кнопка "Подпишись на нас" ведет на Telegram канал.\n- **История**: Сообщения сохраняются в браузере, можно переключаться между темами.\n\nВведите команду или запрос для взаимодействия.`,
+        threadId,
+      });
+      return;
+    }
+
+    const shouldSendText = !!trimmed && (trimmed !== '/help') && !hasImages;
+
+    if (!shouldSendText && !hasImages) {
+      return;
+    }
+
+    setIsTyping(true);
+    setIsAwaitingImageDescription(hasImages);
+
     try {
-      const response = await callAgent(payload);
-      persistMessage({ type: 'bot', contentType: 'text', content: response.response ?? '...', threadId: response.thread_id ?? threadId });
-    } catch (error) {
-      persistMessage({ type: 'bot', contentType: 'text', content: `Ошибка: ${(error as Error).message}`, threadId });
+      if (shouldSendText) {
+        const payload = {
+          message: trimmed,
+          thread_id: threadId,
+          user_id: agentUserId,
+          history: historyMessages,
+          openRouterApiKey: userApiKey,
+          openRouterModel: selectedModel,
+        };
+        try {
+          const response = await callAgent(payload);
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: response.response ?? '...',
+            threadId: response.thread_id ?? threadId,
+          });
+        } catch (error) {
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: `Ошибка: ${(error as Error).message}`,
+            threadId,
+          });
+        }
+      }
+
+      if (hasImages) {
+        if (!currentSettings.openRouterEnabled || !currentSettings.openRouterApiKey) {
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: 'Для анализа изображений включите OpenRouter и укажите API ключ в настройках этого треда.',
+            threadId,
+          });
+          return;
+        }
+
+        const systemPrompt = localStorage.getItem('systemPrompt');
+        try {
+          const response = await uploadImagesForAnalysis({
+            files: attachmentsToSend.map(attachment => attachment.file),
+            threadId,
+            history: historyMessages,
+            settings: currentSettings,
+            systemPrompt,
+            prompt: trimmed,
+          });
+
+          const targetThreadId = response.thread_id ?? threadId;
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: response.response ?? 'Не удалось получить описание изображений.',
+            threadId: targetThreadId,
+          });
+        } catch (error) {
+          console.error('Image description error:', error);
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: `Ошибка при анализе изображения: ${(error as Error).message}`,
+            threadId,
+          });
+        }
+      }
     } finally {
       setIsTyping(false);
+      setIsAwaitingImageDescription(false);
     }
   };
 
@@ -271,6 +355,8 @@ const App = () => {
             fileInputRef={fileInputRef}
             triggerFileInput={triggerFileInput}
             COMMON_COMMANDS={COMMON_COMMANDS}
+            pendingAttachments={pendingAttachments.map(({ id, previewUrl, name }) => ({ id, previewUrl, name }))}
+            removeAttachment={handleRemoveAttachment}
           />
         </div>
         <Footer openSettings={() => setIsSettingsOpen(true)} />
