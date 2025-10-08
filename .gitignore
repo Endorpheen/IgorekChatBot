@@ -47,3 +47,4 @@ replacements.txt
 
 tempfiles/ 
 *.tar.gz
+uploads/
