@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -8,10 +8,12 @@ import os
 import re
 import uvicorn
 import requests
+import base64
+import json
 from uuid import uuid4
-from typing import Literal
+from typing import Literal, Dict
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel as LangchainBaseModel, Field as LangchainField
@@ -96,8 +98,7 @@ class ChatMessagePayload(BaseModel):
     role: Literal["system", "user", "assistant"]
     content: str
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 
 class ChatRequest(BaseModel):
@@ -108,13 +109,24 @@ class ChatRequest(BaseModel):
     open_router_model: str | None = Field(default=None, alias="openRouterModel")
     messages: list[ChatMessagePayload] | None = None
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class ChatResponse(BaseModel):
     status: str
     response: str
     thread_id: str | None = None
+
+
+class ImagePayload(BaseModel):
+    content: str
+    content_type: str
+
+
+class ImageAnalysisResponse(BaseModel):
+    status: str
+    response: str
+    thread_id: str
+    image: ImagePayload
 
 # -------------------------------
 # LangChain Tools
@@ -167,7 +179,9 @@ def browse_website(url: str) -> str:
 # LangChain
 # -------------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "x-ai/grok-4-fast:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+
+THREAD_MODEL_OVERRIDES: Dict[str, str] = {}
 
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY не задан — чат работать не будет")
@@ -275,6 +289,124 @@ def call_ai_query(prompt: str | None = None,
         logger.error(f"[AI QUERY] Ошибка LangChain API: {e}", exc_info=True)
         return f"Ошибка API: {e}"
 
+
+def _build_image_conversation(history: list[dict],
+                              thread_id: str,
+                              history_limit: int,
+                              system_prompt: str | None,
+                              image_data_url: str) -> list[dict]:
+    """
+    Формирует набор сообщений для OpenRouter, включая историю треда и новое изображение.
+    """
+    base_prompt = system_prompt or "You are a helpful AI assistant. You can analyze images when provided."
+    messages = [{"role": "system", "content": base_prompt}]
+
+    filtered_history = [
+        msg for msg in history
+        if isinstance(msg, dict) and msg.get("threadId") == thread_id
+    ]
+
+    filtered_history.sort(key=lambda item: item.get("createdAt", ""))
+
+    history_limit = max(1, min(50, history_limit))
+    if len(filtered_history) > history_limit:
+        filtered_history = filtered_history[-history_limit:]
+
+    for entry in filtered_history:
+        role = entry.get("type")
+        content_type = entry.get("contentType")
+        content = entry.get("content")
+        if not content or role not in {"user", "bot"}:
+            continue
+
+        if content_type == "image" and role == "user":
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Анализируй это изображение."},
+                    {"type": "image_url", "image_url": {"url": content}}
+                ]
+            })
+        elif content_type == "text":
+            messages.append({
+                "role": "user" if role == "user" else "assistant",
+                "content": content
+            })
+
+    messages.append({
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Опиши это изображение подробно, извлеки весь текст если есть."
+            },
+            {"type": "image_url", "image_url": {"url": image_data_url}}
+        ]
+    })
+
+    return messages
+
+
+def _call_openrouter_for_image(messages: list[dict],
+                               api_key: str,
+                               model: str,
+                               origin: str | None) -> str:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "HTTP-Referer": origin or "http://localhost",
+        "X-Title": "IgorekChatBot",
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": int(os.getenv("MAX_COMPLETION_TOKENS", 4096)),
+    }
+
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=90,
+        )
+    except requests.RequestException as exc:
+        logger.error("[IMAGE ANALYSIS] Ошибка запроса к OpenRouter: %s", exc)
+        raise HTTPException(status_code=502, detail=f"OpenRouter error: {exc}") from exc
+
+    if not response.ok:
+        try:
+            error_payload = response.json()
+            error_detail = error_payload.get("error", {}).get("message") or error_payload.get("message")
+        except ValueError:
+            error_detail = response.text
+
+        logger.error(
+            "[IMAGE ANALYSIS] OpenRouter non-OK response: status=%s detail=%s",
+            response.status_code,
+            error_detail,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenRouter error ({response.status_code}): {error_detail or 'Unknown error'}",
+        )
+
+    data = response.json()
+    message = data.get("choices", [{}])[0].get("message") or {}
+    content = message.get("content")
+    if not content:
+        logger.warning("[IMAGE ANALYSIS] Пустой ответ от OpenRouter: %s", data)
+        return "Не удалось получить описание изображения."
+
+    if isinstance(content, list):
+        return "".join(chunk.get("text", "") for chunk in content if isinstance(chunk, dict)) or \
+            "Не удалось получить описание изображения."
+
+    return str(content)
+
 # -------------------------------
 # Public chat API for WebUI
 # -------------------------------
@@ -310,6 +442,9 @@ async def chat_endpoint(payload: ChatRequest):
             user_model=payload.open_router_model,
             messages=incoming_messages,
         )
+        sanitized_model = (payload.open_router_model or "").strip() if payload.open_router_model else None
+        if sanitized_model:
+            THREAD_MODEL_OVERRIDES[current_thread_id] = sanitized_model
     except RuntimeError as exc:
         logger.error("[CHAT ENDPOINT] RuntimeError: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -318,6 +453,76 @@ async def chat_endpoint(payload: ChatRequest):
         status="Message processed",
         response=response_text,
         thread_id=current_thread_id,
+    )
+
+
+@app.post("/image/analyze", response_model=ImageAnalysisResponse)
+async def analyze_image_endpoint(
+    request: Request,
+    file: UploadFile = File(...),
+    thread_id: str = Form(...),
+    history: str = Form("[]"),
+    open_router_api_key: str | None = Form(default=None),
+    open_router_model: str | None = Form(default=None),
+    system_prompt: str | None = Form(default=None),
+    history_message_count: int = Form(default=5),
+):
+    logger.info(
+        "[IMAGE ANALYSIS] Получен запрос: thread_id=%s, filename=%s, content_type=%s",
+        thread_id,
+        file.filename,
+        file.content_type,
+    )
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Поддерживаются только изображения")
+
+    actual_api_key = open_router_api_key or OPENROUTER_API_KEY
+    sanitized_model = (open_router_model or "").strip()
+    if sanitized_model:
+        THREAD_MODEL_OVERRIDES[thread_id] = sanitized_model
+
+    model_from_thread = THREAD_MODEL_OVERRIDES.get(thread_id)
+    actual_model = model_from_thread or OPENROUTER_MODEL
+
+    if not actual_api_key:
+        raise HTTPException(status_code=400, detail="OpenRouter API ключ не настроен")
+    if not actual_model:
+        raise HTTPException(status_code=400, detail="OpenRouter модель не настроена")
+
+    try:
+        history_payload = json.loads(history) if history else []
+        if not isinstance(history_payload, list):
+            raise ValueError("history should be a list")
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.error("[IMAGE ANALYSIS] Некорректный формат history: %s", exc)
+        raise HTTPException(status_code=400, detail="Некорректный формат истории") from exc
+
+    try:
+        file_bytes = await file.read()
+    except Exception as exc:
+        logger.error("[IMAGE ANALYSIS] Не удалось прочитать файл: %s", exc)
+        raise HTTPException(status_code=500, detail="Не удалось прочитать файл") from exc
+
+    encoded = base64.b64encode(file_bytes).decode("utf-8")
+    data_url = f"data:{file.content_type};base64,{encoded}"
+
+    messages = _build_image_conversation(
+        history=history_payload,
+        thread_id=thread_id,
+        history_limit=history_message_count,
+        system_prompt=system_prompt,
+        image_data_url=data_url,
+    )
+
+    origin = request.headers.get("Origin") or request.headers.get("Referer")
+    response_text = _call_openrouter_for_image(messages, actual_api_key, actual_model, origin)
+
+    return ImageAnalysisResponse(
+        status="Image processed",
+        response=response_text,
+        thread_id=thread_id,
+        image=ImagePayload(content=data_url, content_type=file.content_type or "image/*"),
     )
 
 # -------------------------------

@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import './App.css';
 
-import type { ChatMessage, ThreadSettings, ThreadSettingsMap } from './types/chat';
-import { callOpenRouter, callAgent } from './utils/api';
+import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
+import { callAgent, uploadImageForAnalysis } from './utils/api';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -56,14 +56,8 @@ const App = () => {
   });
 
   const { fileInputRef, handleImageUpload, triggerFileInput } = useImageUpload({
-    onImageUpload: (dataUrl: string) => {
-      persistMessage({
-        type: 'user',
-        contentType: 'image',
-        content: dataUrl,
-        threadId,
-      });
-      describeImage(dataUrl);
+    onImageUpload: async (file: File) => {
+      await describeImage(file);
     },
   });
 
@@ -77,7 +71,7 @@ const App = () => {
     setThreadSettings((prev: ThreadSettingsMap) => ({ ...prev, [threadId]: { ...getCurrentThreadSettings(), ...updates } }));
   };
 
-  const describeImage = async (imageDataUrl: string) => {
+  const describeImage = async (file: File) => {
     setIsTyping(true);
     setIsAwaitingImageDescription(true);
     const currentSettings = getCurrentThreadSettings();
@@ -93,31 +87,32 @@ const App = () => {
       return;
     }
 
-    const historyMessages = messages.filter(msg => msg.threadId === threadId);
-
-    const imageMessage: ChatMessage = {
-      id: uuidv4(),
-      threadId,
-      createdAt: new Date().toISOString(),
-      type: 'user',
-      content: imageDataUrl,
-      contentType: 'image',
-    };
-
-    const payload = {
-      message: 'Опиши это изображение подробно, извлеки весь текст если есть.',
-      thread_id: threadId,
-      history: [...historyMessages, imageMessage],
-      useTools: false,
-    };
-
     try {
-      const response = await callOpenRouter(payload, { openRouterApiKey: currentSettings.openRouterApiKey, openRouterModel: currentSettings.openRouterModel }, currentSettings);
+      const historyMessages = messages.filter(msg => msg.threadId === threadId);
+      const systemPrompt = localStorage.getItem('systemPrompt');
+      const response = await uploadImageForAnalysis({
+        file,
+        threadId,
+        history: historyMessages,
+        settings: currentSettings,
+        systemPrompt,
+      });
+      const targetThreadId = response.thread_id ?? threadId;
+
+      if (response.image?.content) {
+        persistMessage({
+          type: 'user',
+          contentType: 'image',
+          content: response.image.content,
+          threadId: targetThreadId,
+        });
+      }
+
       persistMessage({
         type: 'bot',
         contentType: 'text',
         content: response.response ?? 'Не удалось получить описание изображения.',
-        threadId: response.thread_id ?? threadId,
+        threadId: targetThreadId,
       });
     } catch (error) {
       console.error('Image description error:', error);

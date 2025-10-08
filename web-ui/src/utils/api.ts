@@ -241,6 +241,56 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
   return data;
 };
 
+interface UploadImageParams {
+  file: File;
+  threadId: string;
+  history: ChatMessage[];
+  settings: ThreadSettings;
+  systemPrompt?: string | null;
+}
+
+export interface ImageUploadResponse {
+  status: string;
+  response: string;
+  thread_id: string;
+  image?: {
+    content: string;
+    content_type: string;
+  };
+}
+
+export const uploadImageForAnalysis = async ({ file, threadId, history, settings, systemPrompt }: UploadImageParams): Promise<ImageUploadResponse> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('thread_id', threadId);
+  formData.append('history', JSON.stringify(history));
+
+  const historyLimit = Math.max(1, Math.min(50, settings.historyMessageCount ?? 5));
+  formData.append('history_message_count', String(historyLimit));
+
+  if (systemPrompt && systemPrompt.trim()) {
+    formData.append('system_prompt', systemPrompt);
+  }
+  if (settings.openRouterApiKey) {
+    formData.append('open_router_api_key', settings.openRouterApiKey);
+  }
+  if (settings.openRouterModel) {
+    formData.append('open_router_model', settings.openRouterModel);
+  }
+
+  const response = await fetch(buildApiUrl('/image/analyze'), {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Image upload error: ${response.status} ${errorText}`);
+  }
+
+  return (await response.json()) as ImageUploadResponse;
+};
+
 export const callMCP = async (method: string, params: Record<string, unknown>) => {
   const mcpUrl = import.meta.env.VITE_MCP_URL;
   if (!mcpUrl) {
