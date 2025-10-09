@@ -1,5 +1,6 @@
 import React from 'react';
 import { Terminal, Power, VolumeX, Volume2, MessageSquareText, MessageSquareOff, Menu } from 'lucide-react';
+import { clearMessages } from '../storage/messagesStorage';
 
 interface HeaderProps {
   userName: string;
@@ -31,15 +32,22 @@ const Header: React.FC<HeaderProps> = ({
         <button
           className="power-button"
           type="button"
-          onClick={() => {
+          onClick={async () => {
             const confirmed = window.confirm('Очистить локальное хранилище и перезагрузить интерфейс?');
-            if (confirmed) {
-              localStorage.removeItem('roo_agent_messages');
-              localStorage.removeItem('roo_agent_threads');
-              localStorage.removeItem('roo_agent_thread');
-              localStorage.removeItem('roo_agent_thread_names');
-              window.location.reload();
+            if (!confirmed) {
+              return;
             }
+            try {
+              await clearMessages();
+            } catch (error) {
+              console.error('Не удалось очистить IndexedDB:', error);
+            }
+            localStorage.removeItem('roo_agent_messages');
+            localStorage.removeItem('agent_messages');
+            localStorage.removeItem('roo_agent_threads');
+            localStorage.removeItem('roo_agent_thread');
+            localStorage.removeItem('roo_agent_thread_names');
+            window.location.reload();
           }}
           title="Очистить состояние"
         >

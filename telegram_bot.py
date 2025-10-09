@@ -7,6 +7,9 @@ import asyncio
 import logging
 import os
 import re
+import threading
+import time
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 import uvicorn
@@ -15,7 +18,7 @@ import base64
 import json
 import mimetypes
 from uuid import uuid4
-from typing import Literal, Dict, List
+from typing import Literal, Dict, List, Optional, Tuple, Deque
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ConfigDict
 from langchain_openai import ChatOpenAI
@@ -57,6 +60,18 @@ UPLOAD_CLEAN_INTERVAL_SECONDS = int(os.getenv("UPLOAD_CLEAN_INTERVAL_SECONDS", "
 UPLOAD_MAX_TOTAL_BYTES = UPLOAD_MAX_TOTAL_MB * 1024 * 1024
 
 cleanup_task: asyncio.Task | None = None
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
+GOOGLE_SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+GOOGLE_SEARCH_MAX_RESULTS = max(1, min(10, int(os.getenv("GOOGLE_SEARCH_MAX_RESULTS", "5"))))
+GOOGLE_SEARCH_RATE_LIMIT = max(1, int(os.getenv("GOOGLE_SEARCH_RATE_LIMIT", "5")))
+GOOGLE_SEARCH_RATE_WINDOW = max(1, int(os.getenv("GOOGLE_SEARCH_RATE_WINDOW", "60")))
+GOOGLE_SEARCH_CACHE_TTL = max(1, int(os.getenv("GOOGLE_SEARCH_CACHE_TTL", "30")))
+
+_google_rate_timestamps: Deque[float] = deque()
+_google_cache: Dict[str, Tuple[float, List[Dict[str, str]]]] = {}
+_google_lock = threading.Lock()
 
 
 def _delete_file(path: Path) -> bool:
@@ -236,6 +251,127 @@ class ImageAnalysisResponse(BaseModel):
 # -------------------------------
 # LangChain Tools
 # -------------------------------
+
+
+def _log_google_search(status: str, results_count: int, thread_id: Optional[str]) -> None:
+    logger.info(
+        "[GOOGLE SEARCH] status=%s results=%s thread_id=%s",
+        status,
+        results_count,
+        thread_id or "unknown",
+    )
+
+
+def _normalize_google_query(query: str) -> str:
+    return re.sub(r"\s+", " ", query.strip().lower())
+
+
+@tool
+def google_search(query: str, thread_id: Optional[str] = None) -> str:
+    """Выполняет web-поиск через Google Custom Search API и возвращает JSON с результатами."""
+    sanitized_query = (query or "").strip()
+    if not sanitized_query:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: поисковый запрос пуст."
+
+    if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: сервис поиска недоступен — API ключ не настроен."
+
+    now = time.time()
+    cache_key = _normalize_google_query(sanitized_query)
+
+    with _google_lock:
+        while _google_rate_timestamps and now - _google_rate_timestamps[0] > GOOGLE_SEARCH_RATE_WINDOW:
+            _google_rate_timestamps.popleft()
+
+        if len(_google_rate_timestamps) >= GOOGLE_SEARCH_RATE_LIMIT:
+            retry_after = max(int(GOOGLE_SEARCH_RATE_WINDOW - (now - _google_rate_timestamps[0])) + 1, 1)
+            _log_google_search("error", 0, thread_id)
+            return f"Ошибка: превышен лимит запросов к поиску. Попробуйте через {retry_after} сек."
+
+        _google_rate_timestamps.append(now)
+
+        cached_entry = _google_cache.get(cache_key)
+        if cached_entry and now - cached_entry[0] <= GOOGLE_SEARCH_CACHE_TTL:
+            cached_results = cached_entry[1]
+            _log_google_search("success", len(cached_results), thread_id)
+            return json.dumps({
+                "query": sanitized_query,
+                "cached": True,
+                "results": cached_results,
+            }, ensure_ascii=False)
+
+    params = {
+        "key": GOOGLE_API_KEY,
+        "cx": GOOGLE_CSE_ID,
+        "q": sanitized_query,
+        "num": GOOGLE_SEARCH_MAX_RESULTS,
+    }
+
+    try:
+        response = requests.get(GOOGLE_SEARCH_ENDPOINT, params=params, timeout=10)
+    except requests.exceptions.RequestException:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: не удалось связаться с сервисом Google Custom Search."
+
+    if response.status_code == 429:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: превышен дневной лимит Google Custom Search. Попробуйте позже."
+    if response.status_code == 403:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: доступ к Google Custom Search запрещен. Проверьте квоты и разрешения."
+
+    if not response.ok:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: Google Custom Search вернул ошибку сервера."
+
+    try:
+        data = response.json()
+    except ValueError:
+        _log_google_search("error", 0, thread_id)
+        return "Ошибка: некорректный ответ от Google Custom Search."
+
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        _log_google_search("success", 0, thread_id)
+        return json.dumps({
+            "query": sanitized_query,
+            "cached": False,
+            "results": [],
+        }, ensure_ascii=False)
+
+    search_results: List[Dict[str, str]] = []
+    for item in items[:GOOGLE_SEARCH_MAX_RESULTS]:
+        if not isinstance(item, dict):
+            continue
+        link = item.get("link")
+        title = item.get("title") or item.get("htmlTitle") or ""
+        snippet = item.get("snippet") or item.get("htmlSnippet") or ""
+        if not link:
+            continue
+        search_results.append({
+            "title": title.strip(),
+            "link": link,
+            "snippet": re.sub(r"\s+", " ", snippet.strip()),
+        })
+
+    with _google_lock:
+        now_after_call = time.time()
+        _google_cache[cache_key] = (now_after_call, search_results)
+        stale_keys = [key for key, (timestamp, _) in _google_cache.items() if now_after_call - timestamp > GOOGLE_SEARCH_CACHE_TTL * 2]
+        for stale_key in stale_keys:
+            _google_cache.pop(stale_key, None)
+
+    _log_google_search("success", len(search_results), thread_id)
+
+    return json.dumps({
+        "query": sanitized_query,
+        "cached": False,
+        "results": search_results,
+    }, ensure_ascii=False)
+
+
 @tool
 def run_code_in_sandbox(code: str):
     """
@@ -321,7 +457,8 @@ def call_ai_query(prompt: str | None = None,
                   history: list | None = None,
                   user_api_key: str | None = None,
                   user_model: str | None = None,
-                  messages: list[dict[str, str]] | None = None) -> str:
+                  messages: list[dict[str, str]] | None = None,
+                  thread_id: str | None = None) -> str:
     """
     Вызов модели через LangChain с поддержкой function-calling
     """
@@ -349,7 +486,7 @@ def call_ai_query(prompt: str | None = None,
             "X-Title": "IgorekChatBot",
         },
     )
-    llm_with_tools = llm.bind_tools([run_code_in_sandbox, browse_website])
+    llm_with_tools = llm.bind_tools([run_code_in_sandbox, browse_website, google_search])
 
     conversation = []
 
@@ -401,15 +538,34 @@ def call_ai_query(prompt: str | None = None,
                 tool_name = tool_call.get('name') if isinstance(tool_call, dict) else getattr(tool_call, 'name', 'unknown')
                 logger.info("[TOOL RECURSION] step=%s call=%s", step, tool_name)
                 tool_args = tool_call.get('args') if isinstance(tool_call, dict) else getattr(tool_call, 'args', {})
+
                 if tool_name == 'run_code_in_sandbox':
                     result = run_code_in_sandbox.run(tool_args)
-                    tool_outputs.append(ToolMessage(content=str(result), tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)))
                 elif tool_name == 'browse_website':
                     result = browse_website.run(tool_args)
-                    tool_outputs.append(ToolMessage(content=str(result), tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)))
+                elif tool_name == 'google_search':
+                    prepared_args = tool_args
+                    if isinstance(prepared_args, dict):
+                        prepared_args = {
+                            **prepared_args,
+                            **({"thread_id": thread_id} if thread_id and "thread_id" not in prepared_args else {}),
+                        }
+                    else:
+                        prepared_args = {
+                            "query": prepared_args,
+                            "thread_id": thread_id,
+                        }
+                    result = google_search.run(prepared_args)
                 else:
                     logger.warning("[TOOL RECURSION] step=%s неизвестный инструмент: %s", step, tool_name)
-                    tool_outputs.append(ToolMessage(content=f"Unsupported tool: {tool_name}", tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None)))
+                    result = f"Unsupported tool: {tool_name}"
+
+                tool_outputs.append(
+                    ToolMessage(
+                        content=str(result),
+                        tool_call_id=tool_call.get("id") if isinstance(tool_call, dict) else getattr(tool_call, 'id', None),
+                    )
+                )
 
             conversation.extend(tool_outputs)
             logger.debug(f"[AI QUERY] Сообщения после tool_calls шага {step}: {conversation}")
@@ -599,6 +755,7 @@ async def chat_endpoint(payload: ChatRequest):
             user_api_key=payload.open_router_api_key,
             user_model=payload.open_router_model,
             messages=incoming_messages,
+            thread_id=current_thread_id,
         )
         sanitized_model = (payload.open_router_model or "").strip() if payload.open_router_model else None
         if sanitized_model:

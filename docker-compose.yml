@@ -17,6 +17,8 @@ services:
       - VITE_MCP_URL=${VITE_MCP_URL}
       - VITE_AUTH_TOKEN=${VITE_AUTH_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_CSE_ID=${GOOGLE_CSE_ID}
       - VITE_AGENT_API_BASE=http://chatbot:3000
     # Порты наружу не нужны, если через Caddy
     # ports:
