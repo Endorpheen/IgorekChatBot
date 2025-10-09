@@ -193,6 +193,13 @@ if os.path.isdir(WEBUI_DIR):
     async def serve_icon512():
         return FileResponse(os.path.join(WEBUI_DIR, "icon-512.png"))
 
+    @app.get("/favicon.ico")
+    async def serve_favicon():
+        favicon_path = os.path.join(WEBUI_DIR, "favicon.ico")
+        if os.path.isfile(favicon_path):
+            return FileResponse(favicon_path)
+        raise HTTPException(status_code=404, detail="Not Found")
+
     # Service Worker из корня (чтобы точно не ломался)
     @app.get("/sw.js")
     async def serve_root_sw():
