@@ -214,8 +214,6 @@ if os.path.isdir(WEBUI_DIR):
             return FileResponse(file_path)
         raise HTTPException(status_code=404, detail="Not Found")
 
-app.mount(UPLOAD_URL_PREFIX, StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
-
 # -------------------------------
 # Models
 # -------------------------------
@@ -307,11 +305,15 @@ def _require_csrf_token(request: Request) -> None:
         raise HTTPException(status_code=403, detail={"code": "csrf_failed", "message": "CSRF проверка не пройдена"})
 
 
-def _require_session_id(request: Request) -> str:
-    session_id = (request.headers.get("X-Client-Session") or "").strip()
+def verify_client_session(request: Request) -> str:
+    session_id = (request.headers.get("X-Client-Session") or request.cookies.get("client_session") or "").strip()
     if not session_id:
-        raise HTTPException(status_code=400, detail={"code": "missing_session", "message": "Не удалось определить сессию клиента"})
+        raise HTTPException(status_code=403, detail={"code": "missing_session", "message": "Доступ запрещён"})
     return session_id
+
+
+def _require_session_id(request: Request) -> str:
+    return verify_client_session(request)
 
 
 def _extract_together_key(request: Request) -> str:
@@ -1098,6 +1100,25 @@ async def download_image_file(job_id: str):
 
     filename = f"together-flux-{job_id}.webp"
     return FileResponse(str(file_path), media_type="image/webp", filename=filename)
+
+
+@app.get(f"{UPLOAD_URL_PREFIX.rstrip('/')}/{{filename}}")
+async def serve_protected_upload(filename: str, request: Request) -> FileResponse:
+    verify_client_session(request)
+
+    safe_name = Path(filename).name
+    file_path = (UPLOAD_DIR / safe_name).resolve()
+
+    try:
+        file_path.relative_to(UPLOAD_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail={"code": "forbidden", "message": "Доступ запрещён"}) from exc
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Файл не найден"})
+
+    content_type, _ = mimetypes.guess_type(file_path.name)
+    return FileResponse(str(file_path), media_type=content_type or "application/octet-stream")
 
 
 @app.get("/image/capabilities", response_model=ImageCapabilitiesResponse)

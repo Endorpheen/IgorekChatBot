@@ -11,6 +11,7 @@ import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import { useImageUpload } from './hooks/useImageUpload';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { ensureCsrfToken } from './utils/csrf';
+import { getImageSessionId } from './utils/session';
 
 import Header from './components/Header';
 import ThreadsPanel from './components/ThreadsPanel';
@@ -134,6 +135,7 @@ const AppContent = () => {
 
   useEffect(() => {
     ensureCsrfToken();
+    getImageSessionId();
   }, []);
 
   useEffect(() => {
