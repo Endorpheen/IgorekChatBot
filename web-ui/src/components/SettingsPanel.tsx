@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 import type { ThreadSettings } from '../types/settings';
+import ImageGenerationSettings from './ImageGenerationSettings';
 
 interface SettingsPanelProps {
   isSettingsOpen: boolean;
@@ -9,6 +10,7 @@ interface SettingsPanelProps {
   updateCurrentThreadSettings: (updates: Partial<ThreadSettings>) => void;
   threadNames: Record<string, string>;
   threadId: string;
+  onImageKeyChange?: () => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -18,6 +20,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   updateCurrentThreadSettings,
   threadNames,
   threadId,
+  onImageKeyChange,
 }) => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -97,6 +100,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-content">
+          <ImageGenerationSettings isOpen={isSettingsOpen} onKeyChange={onImageKeyChange} />
+
           <div className="setting-group">
             <label className="setting-label">
               <input

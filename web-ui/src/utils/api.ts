@@ -1,4 +1,7 @@
 import type { ChatMessage, ChatResponse, ThreadSettings } from '../types/chat';
+import type { ImageJobCreateResponse, ImageJobStatusResponse, ImageModelCapabilities } from '../types/image';
+import { buildCsrfHeader } from './csrf';
+import { getImageSessionId } from './session';
 
 export const buildApiUrl = (path: string): string => {
   const envBase = import.meta.env.VITE_AGENT_API_BASE?.trim();
@@ -31,6 +34,49 @@ export const buildApiUrl = (path: string): string => {
     : envBase ?? runtimeOrigin ?? 'http://localhost:8018';
 
   return `${base.replace(/\/$/, '')}${path}`;
+};
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+const parseErrorResponse = async (response: Response): Promise<never> => {
+  let message = `HTTP ${response.status}`;
+  let code: string | undefined;
+
+  try {
+    const data = await response.json();
+    if (typeof data === 'string') {
+      message = data;
+    } else if (data?.detail) {
+      if (typeof data.detail === 'string') {
+        message = data.detail;
+      } else if (typeof data.detail === 'object') {
+        if (typeof data.detail.message === 'string') {
+          message = data.detail.message;
+        }
+        if (typeof data.detail.code === 'string') {
+          code = data.detail.code;
+        }
+      }
+    } else if (typeof data?.message === 'string') {
+      message = data.message;
+      if (typeof data.code === 'string') {
+        code = data.code;
+      }
+    }
+  } catch (error) {
+    // ignore parse errors
+  }
+
+  throw new ApiError(message, response.status, code);
 };
 
 interface OpenRouterMessage {
@@ -238,6 +284,84 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
   }
 
   const data = (await response.json()) as ChatResponse;
+  return data;
+};
+
+export const createImageGenerationJob = async (payload: {
+  prompt: string;
+  width: number;
+  height: number;
+  steps: number;
+  togetherKey: string;
+}): Promise<ImageJobCreateResponse> => {
+  const { togetherKey, ...body } = payload;
+  const response = await fetch(buildApiUrl('/image/generate'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Together-Key': togetherKey,
+      'X-Client-Session': getImageSessionId(),
+      ...buildCsrfHeader(),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<ImageJobCreateResponse>;
+};
+
+export const fetchImageJobStatus = async (jobId: string): Promise<ImageJobStatusResponse> => {
+  const response = await fetch(buildApiUrl(`/image/jobs/${jobId}`), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-Client-Session': getImageSessionId(),
+    },
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<ImageJobStatusResponse>;
+};
+
+export const validateTogetherKey = async (togetherKey: string): Promise<void> => {
+  const response = await fetch(buildApiUrl('/image/validate'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'X-Together-Key': togetherKey,
+      'X-Client-Session': getImageSessionId(),
+      ...buildCsrfHeader(),
+    },
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+};
+
+export const fetchImageCapabilities = async (): Promise<ImageModelCapabilities> => {
+  const response = await fetch(buildApiUrl('/image/capabilities'), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  const data = await response.json() as ImageModelCapabilities;
+  if (!data?.model) {
+    throw new ApiError('Не удалось получить параметры модели', response.status, 'model_unknown');
+  }
   return data;
 };
 

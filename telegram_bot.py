@@ -27,6 +27,8 @@ from langchain_core.pydantic_v1 import BaseModel as LangchainBaseModel, Field as
 from langchain.tools import tool
 from langchain_core.messages import ToolMessage
 
+from image_generation import ImageGenerationError, get_model_capabilities, image_manager
+
 try:
     import multipart  # type: ignore
 except ImportError:  # pragma: no cover - fallback when python-multipart не установлен
@@ -255,6 +257,73 @@ class ImageAnalysisResponse(BaseModel):
     image: ImagePayload | None = None
     images: List[ImagePayload] | None = None
 
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str
+    width: int = 1024
+    height: int = 1024
+    steps: int = 4
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ImageJobCreateResponse(BaseModel):
+    job_id: str
+    status: Literal["queued"]
+
+
+class ImageJobStatusResponse(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "done", "error"]
+    provider: str
+    prompt: str
+    width: int
+    height: int
+    steps: int
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_ms: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    result_url: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ImageCapabilitiesResponse(BaseModel):
+    model: str
+    steps_allowed: list[int]
+    default_steps: int
+    sizes_allowed: list[int]
+    default_size: int
+
+
+def _require_csrf_token(request: Request) -> None:
+    cookie_token = request.cookies.get("csrf-token")
+    header_token = request.headers.get("X-CSRF-Token")
+    if not cookie_token or not header_token or cookie_token != header_token:
+        raise HTTPException(status_code=403, detail={"code": "csrf_failed", "message": "CSRF проверка не пройдена"})
+
+
+def _require_session_id(request: Request) -> str:
+    session_id = (request.headers.get("X-Client-Session") or "").strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail={"code": "missing_session", "message": "Не удалось определить сессию клиента"})
+    return session_id
+
+
+def _extract_together_key(request: Request) -> str:
+    together_key = (request.headers.get("X-Together-Key") or "").strip()
+    if not together_key:
+        raise HTTPException(status_code=400, detail={"code": "missing_key", "message": "Заголовок X-Together-Key обязателен"})
+    return together_key
+
+
+def _image_error_to_http(exc: ImageGenerationError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail={"code": exc.error_code, "message": str(exc)})
+
 # -------------------------------
 # LangChain Tools
 # -------------------------------
@@ -427,15 +496,16 @@ def browse_website(url: str) -> str:
 @app.on_event("startup")
 async def _startup_cleanup_task() -> None:
     global cleanup_task
-    if UPLOAD_CLEAN_INTERVAL_SECONDS <= 0:
-        return
-    cleanup_task = asyncio.create_task(_cleanup_uploads_periodically())
-    logger.info(
-        "[UPLOAD CLEAN] Фоновая очистка запущена: interval=%ss ttl_days=%s max_total_mb=%s",
-        UPLOAD_CLEAN_INTERVAL_SECONDS,
-        UPLOAD_TTL_DAYS,
-        UPLOAD_MAX_TOTAL_MB,
-    )
+    await image_manager.startup()
+
+    if UPLOAD_CLEAN_INTERVAL_SECONDS > 0:
+        cleanup_task = asyncio.create_task(_cleanup_uploads_periodically())
+        logger.info(
+            "[UPLOAD CLEAN] Фоновая очистка запущена: interval=%ss ttl_days=%s max_total_mb=%s",
+            UPLOAD_CLEAN_INTERVAL_SECONDS,
+            UPLOAD_TTL_DAYS,
+            UPLOAD_MAX_TOTAL_MB,
+        )
 
 
 @app.on_event("shutdown")
@@ -448,6 +518,7 @@ async def _shutdown_cleanup_task() -> None:
         except asyncio.CancelledError:
             pass
         cleanup_task = None
+    await image_manager.shutdown()
 
 # -------------------------------
 # LangChain
@@ -897,6 +968,114 @@ async def analyze_image_endpoint(
         image=images_payload[0] if images_payload else None,
         images=images_payload,
     )
+
+
+@app.post("/image/generate", response_model=ImageJobCreateResponse)
+async def create_image_job(request: Request, payload: ImageGenerateRequest) -> ImageJobCreateResponse:
+    _require_csrf_token(request)
+    session_id = _require_session_id(request)
+    together_key = _extract_together_key(request)
+
+    try:
+        job_id = await image_manager.enqueue_job(
+            prompt=payload.prompt,
+            width=payload.width,
+            height=payload.height,
+            steps=payload.steps,
+            session_id=session_id,
+            together_key=together_key,
+        )
+    except ImageGenerationError as exc:
+        raise _image_error_to_http(exc)
+
+    return ImageJobCreateResponse(job_id=job_id, status="queued")
+
+
+@app.get("/image/jobs/{job_id}", response_model=ImageJobStatusResponse)
+async def get_image_job(job_id: str, request: Request) -> ImageJobStatusResponse:
+    session_id = _require_session_id(request)
+
+    try:
+        status = await image_manager.get_job_status(job_id)
+    except ImageGenerationError as exc:
+        raise _image_error_to_http(exc)
+
+    if not status:
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "Задача не найдена"})
+    if status.session_id != session_id:
+        raise HTTPException(status_code=403, detail={"code": "forbidden", "message": "Доступ к задаче запрещён"})
+
+    result_url = None
+    if status.status == "done" and status.result_path:
+        result_url = f"/image/jobs/{job_id}/result"
+
+    return ImageJobStatusResponse(
+        job_id=job_id,
+        status=status.status,
+        provider=status.provider,
+        prompt=status.prompt,
+        width=status.width,
+        height=status.height,
+        steps=status.steps,
+        created_at=status.created_at,
+        updated_at=status.updated_at,
+        started_at=status.started_at,
+        completed_at=status.completed_at,
+        duration_ms=status.duration_ms,
+        error_code=status.error_code,
+        error_message=status.error_message,
+        result_url=result_url,
+    )
+
+
+@app.get("/image/jobs/{job_id}/result")
+async def download_image_job_result(job_id: str, request: Request) -> FileResponse:
+    session_id = _require_session_id(request)
+
+    try:
+        status = await image_manager.get_job_status(job_id)
+    except ImageGenerationError as exc:
+        raise _image_error_to_http(exc)
+
+    if not status or status.status != "done" or not status.result_path:
+        raise HTTPException(status_code=404, detail={"code": "result_unavailable", "message": "Результат ещё не готов"})
+    if status.session_id != session_id:
+        raise HTTPException(status_code=403, detail={"code": "forbidden", "message": "Доступ запрещён"})
+
+    try:
+        file_path = Path(status.result_path).resolve()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail={"code": "invalid_path", "message": "Некорректный путь к результату"}) from exc
+
+    output_dir = image_manager.output_dir.resolve()
+    try:
+        file_path.relative_to(output_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail={"code": "forbidden", "message": "Доступ запрещён"}) from exc
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Файл результата не найден"})
+
+    return FileResponse(str(file_path), media_type="image/webp")
+
+
+@app.post("/image/validate")
+async def validate_together_key_endpoint(request: Request) -> Dict[str, str]:
+    _require_csrf_token(request)
+    together_key = _extract_together_key(request)
+
+    try:
+        await image_manager.validate_key(together_key)
+    except ImageGenerationError as exc:
+        raise _image_error_to_http(exc)
+
+    return {"status": "ok"}
+
+
+@app.get("/image/capabilities", response_model=ImageCapabilitiesResponse)
+async def get_image_capabilities_endpoint() -> ImageCapabilitiesResponse:
+    data = get_model_capabilities()
+    return ImageCapabilitiesResponse(**data)
 
 # -------------------------------
 # ✅ Google Search Console верификация

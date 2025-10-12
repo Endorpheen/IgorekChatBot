@@ -9,6 +9,7 @@ RUN npm install && npm run build
 # Этап 2: Python backend + готовый WebUI
 FROM python:3.12-slim
 WORKDIR /app
+ENV PYTHONPATH=/app
 
 # зависимости Python
 COPY requirements.txt .
@@ -16,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # код бота
 COPY telegram_bot.py .
+COPY image_generation ./image_generation
 COPY mcp-cli.py .
 
 # копируем собранный WebUI из первого этапа

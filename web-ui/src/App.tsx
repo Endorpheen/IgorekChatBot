@@ -9,12 +9,14 @@ import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import { useImageUpload } from './hooks/useImageUpload';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
+import { ensureCsrfToken } from './utils/csrf';
 
 import Header from './components/Header';
 import ThreadsPanel from './components/ThreadsPanel';
 import ChatPanel from './components/ChatPanel';
 import Footer from './components/Footer';
 import SettingsPanel from './components/SettingsPanel';
+import ImageGenerationPanel from './components/ImageGenerationPanel';
 
 interface PendingAttachment {
   id: string;
@@ -56,6 +58,7 @@ const App = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [musicMuted, setMusicMuted] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [keyRefreshToken, setKeyRefreshToken] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
@@ -124,6 +127,10 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem('roo_agent_thread_settings', JSON.stringify(threadSettings));
   }, [threadSettings]);
+
+  useEffect(() => {
+    ensureCsrfToken();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -370,6 +377,10 @@ const App = () => {
             removeAttachment={handleRemoveAttachment}
           />
         </div>
+        <ImageGenerationPanel
+          onRequireKeySetup={() => setIsSettingsOpen(true)}
+          refreshKeySignal={keyRefreshToken}
+        />
         <Footer openSettings={() => setIsSettingsOpen(true)} />
       </div>
       <SettingsPanel 
@@ -379,6 +390,7 @@ const App = () => {
         updateCurrentThreadSettings={updateCurrentThreadSettings}
         threadNames={threadNames}
         threadId={threadId}
+        onImageKeyChange={() => setKeyRefreshToken((value) => value + 1)}
       />
       <audio
         ref={audioRef}
