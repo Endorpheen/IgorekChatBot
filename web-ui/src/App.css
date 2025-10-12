@@ -116,6 +116,28 @@
   transform: translateY(-1px);
 }
 
+.image-gen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(0, 255, 144, 0.35);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.4);
+  color: inherit;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.65rem;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.image-gen-button:hover {
+  background: rgba(0, 96, 48, 0.35);
+  border-color: rgba(0, 255, 144, 0.75);
+  transform: translateY(-1px);
+}
+
 .grid {
   flex: 1;
   display: grid;
@@ -1512,6 +1534,48 @@
   border-radius: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.image-page-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.image-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.image-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.image-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(0, 255, 144, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.image-back-button:hover {
+  background: rgba(0, 96, 48, 0.35);
+  border-color: rgba(0, 255, 144, 0.75);
+  transform: translateY(-1px);
 }
 
 .setting-group {

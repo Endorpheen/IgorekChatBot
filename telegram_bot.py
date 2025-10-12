@@ -1007,7 +1007,7 @@ async def get_image_job(job_id: str, request: Request) -> ImageJobStatusResponse
 
     result_url = None
     if status.status == "done" and status.result_path:
-        result_url = f"/image/jobs/{job_id}/result"
+        result_url = f"/image/files/{job_id}.webp"
 
     return ImageJobStatusResponse(
         job_id=job_id,
@@ -1072,6 +1072,34 @@ async def validate_together_key_endpoint(request: Request) -> Dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/image/files/{job_id}.webp")
+async def download_image_file(job_id: str):
+    try:
+        status = await image_manager.get_job_status(job_id)
+    except ImageGenerationError as exc:
+        raise _image_error_to_http(exc)
+
+    if not status or status.status != "done" or not status.result_path:
+        raise HTTPException(status_code=404, detail={"code": "result_unavailable", "message": "Результат ещё не готов"})
+
+    try:
+        file_path = Path(status.result_path).resolve()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail={"code": "invalid_path", "message": "Некорректный путь к результату"}) from exc
+
+    output_dir = image_manager.output_dir.resolve()
+    try:
+        file_path.relative_to(output_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail={"code": "forbidden", "message": "Доступ запрещён"}) from exc
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Файл результата не найден"})
+
+    filename = f"together-flux-{job_id}.webp"
+    return FileResponse(str(file_path), media_type="image/webp", filename=filename)
+
+
 @app.get("/image/capabilities", response_model=ImageCapabilitiesResponse)
 async def get_image_capabilities_endpoint() -> ImageCapabilitiesResponse:
     data = get_model_capabilities()
@@ -1127,6 +1155,15 @@ async def root_redirect():
     if os.path.exists(os.path.join(WEBUI_DIR, "index.html")):
         return FileResponse(os.path.join(WEBUI_DIR, "index.html"))
     return {"service": "IgorekChatBot API", "status": "alive"}
+
+
+@app.get("/images")
+@app.get("/images/")
+async def images_spa_route():
+    index_path = os.path.join(WEBUI_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Not Found")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=3000)

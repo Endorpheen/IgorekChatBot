@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, Power, VolumeX, Volume2, MessageSquareText, MessageSquareOff, Menu } from 'lucide-react';
+import { Terminal, Power, VolumeX, Volume2, MessageSquareText, MessageSquareOff, Menu, ImagePlus } from 'lucide-react';
 import { clearMessages } from '../storage/messagesStorage';
 
 interface HeaderProps {
@@ -9,6 +9,8 @@ interface HeaderProps {
   audioEnabled: boolean;
   setAudioEnabled: (enabled: boolean) => void;
   setIsMenuOpen: (isOpen: boolean) => void;
+  onNavigateToImages?: () => void;
+  showImageNavigation?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -18,6 +20,8 @@ const Header: React.FC<HeaderProps> = ({
   audioEnabled,
   setAudioEnabled,
   setIsMenuOpen,
+  onNavigateToImages,
+  showImageNavigation,
 }) => {
   return (
     <header className="app-header">
@@ -29,6 +33,17 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       <div className="app-header__actions">
+        {showImageNavigation && onNavigateToImages && (
+          <button
+            type="button"
+            className="image-gen-button"
+            onClick={onNavigateToImages}
+            title="Генерация изображений"
+          >
+            <ImagePlus className="icon" />
+            <span className="desktop-only">Генерация</span>
+          </button>
+        )}
         <button
           className="power-button"
           type="button"

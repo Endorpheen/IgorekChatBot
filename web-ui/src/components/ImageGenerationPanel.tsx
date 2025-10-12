@@ -16,6 +16,7 @@ import {
 } from '../utils/api';
 import { getImageSessionId } from '../utils/session';
 import type { ImageModelCapabilities } from '../types/image';
+import { useLocation } from 'react-router-dom';
 
 interface ImageGenerationPanelProps {
   onRequireKeySetup?: () => void;
@@ -23,6 +24,67 @@ interface ImageGenerationPanelProps {
 }
 
 const MAX_PROMPT_LENGTH = 800;
+const SESSION_STATE_KEY = 'image-generation-state';
+
+interface StoredImageGenerationState {
+  prompt: string;
+  size: number | null;
+  steps: number | null;
+  jobId: string | null;
+  downloadUrl: string | null;
+}
+
+const readStoredState = (): StoredImageGenerationState => {
+  if (typeof window === 'undefined') {
+    return {
+      prompt: '',
+      size: null,
+      steps: null,
+      jobId: null,
+      downloadUrl: null,
+    };
+  }
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_STATE_KEY);
+    if (!raw) {
+      return {
+        prompt: '',
+        size: null,
+        steps: null,
+        jobId: null,
+        downloadUrl: null,
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<StoredImageGenerationState>;
+    return {
+      prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
+      size: typeof parsed.size === 'number' ? parsed.size : null,
+      steps: typeof parsed.steps === 'number' ? parsed.steps : null,
+      jobId: typeof parsed.jobId === 'string' ? parsed.jobId : null,
+      downloadUrl: typeof parsed.downloadUrl === 'string' ? parsed.downloadUrl : null,
+    };
+  } catch (error) {
+    console.warn('Не удалось прочитать сохранённое состояние генерации:', error);
+    return {
+      prompt: '',
+      size: null,
+      steps: null,
+      jobId: null,
+      downloadUrl: null,
+    };
+  }
+};
+
+const writeStoredState = (state: StoredImageGenerationState) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(SESSION_STATE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn('Не удалось сохранить состояние генерации:', error);
+  }
+};
 
 const STATUS_LABELS: Record<ImageJobStatus, string> = {
   queued: 'В очереди',
@@ -32,18 +94,27 @@ const STATUS_LABELS: Record<ImageJobStatus, string> = {
 };
 
 const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKeySetup, refreshKeySignal }) => {
-  const [prompt, setPrompt] = useState('');
-  const [sizeValue, setSizeValue] = useState<number | null>(null);
-  const [steps, setSteps] = useState<number | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
+  const location = useLocation();
+  const storedStateRef = useRef<StoredImageGenerationState | null>(null);
+  if (!storedStateRef.current) {
+    storedStateRef.current = readStoredState();
+  }
+  const storedState = storedStateRef.current;
+
+  const [prompt, setPrompt] = useState<string>(storedState?.prompt ?? '');
+  const [sizeValue, setSizeValue] = useState<number | null>(storedState?.size ?? null);
+  const [steps, setSteps] = useState<number | null>(storedState?.steps ?? null);
+  const [jobId, setJobId] = useState<string | null>(storedState?.jobId ?? null);
   const [jobStatus, setJobStatus] = useState<ImageJobStatusResponse | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(storedState?.downloadUrl ?? null);
   const [keyAvailable, setKeyAvailable] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
   const [capabilities, setCapabilities] = useState<ImageModelCapabilities | null>(null);
+  const pendingParamsRef = useRef<{ size?: number | null; steps?: number | null } | null>(null);
 
   useEffect(() => {
     const refresh = async () => {
@@ -66,8 +137,27 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
           return;
         }
         setCapabilities(fetched);
-        setSteps((prev) => (prev === null ? fetched.default_steps : prev));
-        setSizeValue((prev) => (prev === null ? fetched.default_size : prev));
+        setSteps((prev) => {
+          const pendingValue = pendingParamsRef.current?.steps;
+          if (typeof pendingValue === 'number' && fetched.steps_allowed.includes(pendingValue)) {
+            return pendingValue;
+          }
+          if (prev !== null && fetched.steps_allowed.includes(prev)) {
+            return prev;
+          }
+          return fetched.default_steps;
+        });
+        setSizeValue((prev) => {
+          const pendingValue = pendingParamsRef.current?.size;
+          if (typeof pendingValue === 'number' && fetched.sizes_allowed.includes(pendingValue)) {
+            return pendingValue;
+          }
+          if (prev !== null && fetched.sizes_allowed.includes(prev)) {
+            return prev;
+          }
+          return fetched.default_size;
+        });
+        pendingParamsRef.current = null;
       } catch (error) {
         if (!cancelled) {
           setCapabilities(null);
@@ -78,6 +168,99 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.has('prompt')) {
+      const promptParam = params.get('prompt') ?? '';
+      if (promptParam !== prompt) {
+        setPrompt(promptParam);
+      }
+    }
+
+    const next: { size?: number | null; steps?: number | null } = {};
+    if (params.has('size')) {
+      const parsed = Number(params.get('size'));
+      next.size = Number.isFinite(parsed) ? parsed : null;
+    }
+    if (params.has('steps')) {
+      const parsed = Number(params.get('steps'));
+      next.steps = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    if (Object.keys(next).length > 0) {
+      pendingParamsRef.current = next;
+      if (capabilities) {
+        if (typeof next.size === 'number' && capabilities.sizes_allowed.includes(next.size)) {
+          setSizeValue(next.size);
+        }
+        if (typeof next.steps === 'number' && capabilities.steps_allowed.includes(next.steps)) {
+          setSteps(next.steps);
+        }
+        pendingParamsRef.current = null;
+      }
+    }
+  }, [location.search, capabilities, prompt]);
+
+  useEffect(() => {
+    const nextState: StoredImageGenerationState = {
+      prompt,
+      size: sizeValue,
+      steps,
+      jobId,
+      downloadUrl,
+    };
+    writeStoredState(nextState);
+    storedStateRef.current = nextState;
+  }, [prompt, sizeValue, steps, jobId, downloadUrl]);
+
+  useEffect(() => {
+    if (!downloadUrl) {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      setImageUrl(null);
+      return;
+    }
+
+    if (imageUrl) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(buildApiUrl(downloadUrl), {
+          headers: {
+            'X-Client-Session': getImageSessionId(),
+          },
+        });
+        if (!response.ok || cancelled) {
+          return;
+        }
+        const blob = await response.blob();
+        if (cancelled) {
+          return;
+        }
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        objectUrlRef.current = objectUrl;
+        setImageUrl(objectUrl);
+      } catch (error) {
+        if (!cancelled) {
+          setStatusError('Не удалось загрузить изображение результата');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [downloadUrl, imageUrl]);
 
   useEffect(() => () => {
     if (objectUrlRef.current) {
@@ -104,6 +287,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
         } else if (status.status === 'error') {
           setIsGenerating(false);
           setStatusError(status.error_message ?? 'Генерация завершилась с ошибкой');
+          setDownloadUrl(null);
         } else {
           setTimeout(poll, 2500);
         }
@@ -122,6 +306,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
           setStatusError('Не удалось получить статус задачи');
         }
         setIsGenerating(false);
+        setDownloadUrl(null);
       }
     };
 
@@ -130,14 +315,13 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
     return () => {
       cancelled = true;
     };
-  }, [jobId]);
+  }, [jobId, capabilities]);
 
   const fetchResultImage = async (status: ImageJobStatusResponse) => {
     if (!status.result_url) {
       setStatusError('Сервер не предоставил ссылку на изображение');
       return;
     }
-
     try {
       const response = await fetch(buildApiUrl(status.result_url), {
         headers: {
@@ -155,6 +339,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
       const objectUrl = URL.createObjectURL(blob);
       objectUrlRef.current = objectUrl;
       setImageUrl(objectUrl);
+      setDownloadUrl(status.result_url);
     } catch (error) {
       setStatusError('Не удалось загрузить изображение результата');
     }
@@ -209,6 +394,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
     setImageUrl(null);
     setJobStatus(null);
     setJobId(null);
+    setDownloadUrl(null);
 
     let togetherKeyValue: string | null = null;
     try {
@@ -263,6 +449,13 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
     }
     return 'status-progress';
   }, [jobStatus]);
+
+  const downloadHref = useMemo(() => {
+    if (!downloadUrl) {
+      return undefined;
+    }
+    return buildApiUrl(downloadUrl);
+  }, [downloadUrl]);
 
   return (
     <section className="image-generation-panel">
@@ -398,13 +591,19 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
         {imageUrl && (
           <div className="result-preview">
             <img src={imageUrl} alt="Результат генерации" className="result-image" />
-            <a
-              className="settings-button secondary"
-              href={imageUrl}
-              download={`together-flux-${jobId ?? 'result'}.webp`}
-            >
-              Скачать WEBP
-            </a>
+            {downloadHref ? (
+              <a
+                className="settings-button secondary"
+                href={downloadHref}
+                download={`together-flux-${jobId ?? 'result'}.webp`}
+              >
+                Скачать WEBP
+              </a>
+            ) : (
+              <button type="button" className="settings-button secondary" disabled>
+                Подготовка файла...
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import './App.css';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
 import { callAgent, uploadImagesForAnalysis } from './utils/api';
@@ -28,7 +29,7 @@ interface PendingAttachment {
 
 const MAX_PENDING_ATTACHMENTS = 4;
 
-const App = () => {
+const AppContent = () => {
   const {
     messages,
     setMessages,
@@ -63,6 +64,9 @@ const App = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
   const agentUserId = useMemo(() => import.meta.env.VITE_TELEGRAM_USER_ID ?? 'local-user', []);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isImagesRoute = location.pathname.startsWith('/images');
 
   const { isRecording, toggleRecognition } = useSpeechRecognition({
     onResult: (transcript) => setInput(prev => prev + ' ' + transcript),
@@ -326,64 +330,101 @@ const App = () => {
 
   const messagesToRender = useMemo(() => messages.filter(msg => msg.threadId === threadId), [messages, threadId]);
 
+  useEffect(() => {
+    if (location.pathname === '/' || isImagesRoute) {
+      return;
+    }
+    navigate('/', { replace: true });
+  }, [location.pathname, isImagesRoute, navigate]);
+
   return (
-    <div className="app-root">
-      <div className="app-shell">
-        <div className="disclaimer-banner">Игорёк очень любит галлюцинации 🤪, будьте осторожны!!! Проверяйте важную информацию!</div>
-        <Header 
-          userName={userName}
-          toggleMusicMute={() => setMusicMuted(!musicMuted)}
-          musicMuted={musicMuted}
-          audioEnabled={audioEnabled}
-          setAudioEnabled={setAudioEnabled}
-          setIsMenuOpen={setIsMenuOpen}
-        />
-        <div className="grid">
-          <ThreadsPanel 
-            isMenuOpen={isMenuOpen}
-            setIsMenuOpen={setIsMenuOpen}
-            sortedThreads={sortedThreads}
-            threadSettings={threadSettings}
-            threadNames={threadNames}
-            threadId={threadId}
-            openMenuId={openMenuId}
-            setOpenMenuId={setOpenMenuId}
-            handleRenameThread={handleRenameThread}
-            handleDeleteThread={handleDeleteThread}
-            setThreadId={setThreadId}
-            handleNewThread={handleNewThread}
-            toggleThreadSortOrder={() => setThreadSortOrder(p => p === 'newest-first' ? 'oldest-first' : 'newest-first')}
-            threadSortOrder={threadSortOrder}
-            openSettings={() => setIsSettingsOpen(true)}
-            audioEnabled={audioEnabled}
-            setAudioEnabled={setAudioEnabled}
-          />
-          <ChatPanel 
-            messages={messagesToRender}
-            isTyping={isTyping}
-            input={input}
-            isRecording={isRecording}
-            audioEnabled={audioEnabled}
-            handleInputChange={(e) => setInput(e.target.value)}
-            handleVoiceInput={toggleRecognition}
-            handleImageUpload={handleImageUpload}
-            handleSubmit={handleSubmit}
-            handleCommandClick={(cmd) => setInput(cmd)}
-            messagesEndRef={messagesEndRef}
-            fileInputRef={fileInputRef}
-            triggerFileInput={triggerFileInput}
-            COMMON_COMMANDS={COMMON_COMMANDS}
-            pendingAttachments={pendingAttachments.map(({ id, previewUrl, name }) => ({ id, previewUrl, name }))}
-            removeAttachment={handleRemoveAttachment}
-          />
+    <>
+      <div className="app-root">
+        <div className={`app-shell${isImagesRoute ? ' image-page-shell' : ''}`}>
+          {isImagesRoute ? (
+            <>
+              <div className="image-page-header">
+                <button
+                  type="button"
+                  className="image-back-button"
+                  onClick={() => navigate('/')}
+                >
+                  ← В чат
+                </button>
+                <div className="image-page-actions">
+                  <button
+                    type="button"
+                    className="settings-button secondary"
+                    onClick={() => setIsSettingsOpen(true)}
+                  >
+                    Настройки
+                  </button>
+                </div>
+              </div>
+              <ImageGenerationPanel
+                onRequireKeySetup={() => setIsSettingsOpen(true)}
+                refreshKeySignal={keyRefreshToken}
+              />
+              <Footer openSettings={() => setIsSettingsOpen(true)} />
+            </>
+          ) : (
+            <>
+              <div className="disclaimer-banner">Игорёк очень любит галлюцинации 🤪, будьте осторожны!!! Проверяйте важную информацию!</div>
+              <Header
+                userName={userName}
+                toggleMusicMute={() => setMusicMuted(!musicMuted)}
+                musicMuted={musicMuted}
+                audioEnabled={audioEnabled}
+                setAudioEnabled={setAudioEnabled}
+                setIsMenuOpen={setIsMenuOpen}
+                showImageNavigation
+                onNavigateToImages={() => navigate('/images')}
+              />
+              <div className="grid">
+                <ThreadsPanel
+                  isMenuOpen={isMenuOpen}
+                  setIsMenuOpen={setIsMenuOpen}
+                  sortedThreads={sortedThreads}
+                  threadSettings={threadSettings}
+                  threadNames={threadNames}
+                  threadId={threadId}
+                  openMenuId={openMenuId}
+                  setOpenMenuId={setOpenMenuId}
+                  handleRenameThread={handleRenameThread}
+                  handleDeleteThread={handleDeleteThread}
+                  setThreadId={setThreadId}
+                  handleNewThread={handleNewThread}
+                  toggleThreadSortOrder={() => setThreadSortOrder((p) => (p === 'newest-first' ? 'oldest-first' : 'newest-first'))}
+                  threadSortOrder={threadSortOrder}
+                  openSettings={() => setIsSettingsOpen(true)}
+                  audioEnabled={audioEnabled}
+                  setAudioEnabled={setAudioEnabled}
+                />
+                <ChatPanel
+                  messages={messagesToRender}
+                  isTyping={isTyping}
+                  input={input}
+                  isRecording={isRecording}
+                  audioEnabled={audioEnabled}
+                  handleInputChange={(e) => setInput(e.target.value)}
+                  handleVoiceInput={toggleRecognition}
+                  handleImageUpload={handleImageUpload}
+                  handleSubmit={handleSubmit}
+                  handleCommandClick={(cmd) => setInput(cmd)}
+                  messagesEndRef={messagesEndRef}
+                  fileInputRef={fileInputRef}
+                  triggerFileInput={triggerFileInput}
+                  COMMON_COMMANDS={COMMON_COMMANDS}
+                  pendingAttachments={pendingAttachments.map(({ id, previewUrl, name }) => ({ id, previewUrl, name }))}
+                  removeAttachment={handleRemoveAttachment}
+                />
+              </div>
+              <Footer openSettings={() => setIsSettingsOpen(true)} />
+            </>
+          )}
         </div>
-        <ImageGenerationPanel
-          onRequireKeySetup={() => setIsSettingsOpen(true)}
-          refreshKeySignal={keyRefreshToken}
-        />
-        <Footer openSettings={() => setIsSettingsOpen(true)} />
       </div>
-      <SettingsPanel 
+      <SettingsPanel
         isSettingsOpen={isSettingsOpen}
         closeSettings={() => setIsSettingsOpen(false)}
         threadSettings={threadSettings}
@@ -405,8 +446,14 @@ const App = () => {
         preload="auto"
         style={{ display: 'none' }}
       />
-    </div>
+    </>
   );
 };
+
+const App: React.FC = () => (
+  <BrowserRouter>
+    <AppContent />
+  </BrowserRouter>
+);
 
 export default App;

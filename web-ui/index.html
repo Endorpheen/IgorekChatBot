@@ -2,29 +2,70 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="shortcut icon" href="/favicon.ico">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+
+    <!-- Primary Meta Tags -->
+    <title>Igorek ChatBot — AI Control Terminal с поддержкой GPT-5, Gemini и Grok</title>
+    <meta name="title" content="Igorek ChatBot — AI Control Terminal с поддержкой GPT-5, Gemini и Grok" />
+    <meta name="description" content="Igorek ChatBot — интеллектуальный терминал управления ИИ с поддержкой GPT-5, Gemini и Grok. Быстрый, саркастичный и умный, как его создатель." />
+    <meta name="keywords" content="AI, ChatBot, GPT-5, Gemini, Grok, Telegram, FastAPI, React, Igorek, Artificial Intelligence" />
+    <meta name="author" content="Igorek ChatBot Team" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Igorek ChatBot — AI Control Terminal с поддержкой GPT-5, Gemini и Grok."
-    />
-    <title>Igorek ChatBot</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://igorekchatbot.ru/" />
+    <meta property="og:title" content="Igorek ChatBot — AI Control Terminal с поддержкой GPT-5, Gemini и Grok" />
+    <meta property="og:description" content="Igorek ChatBot — интеллектуальный терминал управления ИИ с поддержкой GPT-5, Gemini и Grok." />
+    <meta property="og:image" content="https://igorekchatbot.ru/icon-512.png" />
+    <meta property="og:site_name" content="Igorek ChatBot" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://igorekchatbot.ru/" />
+    <meta name="twitter:title" content="Igorek ChatBot — AI Control Terminal с поддержкой GPT-5, Gemini и Grok" />
+    <meta name="twitter:description" content="Igorek ChatBot — интеллектуальный терминал управления ИИ с поддержкой GPT-5, Gemini и Grok." />
+    <meta name="twitter:image" content="https://igorekchatbot.ru/icon-512.png" />
+    <meta name="twitter:creator" content="@IamEnd0" />
+    <meta name="twitter:site" content="@IamEnd0" />
+
+    <!-- PWA Manifest -->
     <link rel="manifest" href="/web-ui/manifest.json" />
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Igorek ChatBot",
+      "url": "https://igorekchatbot.ru",
+      "logo": "https://igorekchatbot.ru/favicon.ico",
+      "sameAs": [
+        "https://t.me/enewsezonechat",
+        "https://x.com/IamEnd0"
+      ],
+      "description": "AI Control Terminal с поддержкой GPT-5, Gemini и Grok. Умный, саркастичный и всегда на связи.",
+      "founder": {
+        "@type": "Person",
+        "name": "end0",
+        "jobTitle": "Разработчик Igorek ChatBot"
+      }
+    }
+    </script>
   </head>
+
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js").then(
-          (reg) => {
-            console.log("Service Worker зарегистрирован:", reg);
-          },
-          (err) => {
-            console.error("Ошибка регистрации Service Worker:", err);
-          }
+          (reg) => console.log("Service Worker зарегистрирован:", reg),
+          (err) => console.error("Ошибка регистрации Service Worker:", err)
         );
       }
     </script>
