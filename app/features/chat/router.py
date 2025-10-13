@@ -42,7 +42,7 @@ async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
     log_payload = payload.model_dump(by_alias=True)
     if log_payload.get("openRouterApiKey"):
         log_payload["openRouterApiKey"] = "***masked***"
-    logger.info("[CHAT ENDPOINT] Входящий payload: %s", log_payload)
+    logger.info(f"[CHAT ENDPOINT] Входящий payload: {log_payload}")
 
     message = (payload.message or "").strip()
     incoming_messages = None
