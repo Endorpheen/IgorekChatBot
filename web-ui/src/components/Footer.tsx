@@ -9,30 +9,35 @@ interface FooterProps {
 const Footer: React.FC<FooterProps> = ({ openSettings }) => {
   return (
     <footer className="app-footer">
-      <button
-        type="button"
-        className="settings-button footer-settings-hide-mobile"
-        title="Настройки"
-        onClick={openSettings}
-      >
-        <Settings className="icon" />
-        Настройки
-      </button>
-      <div className="footer-center">
-        <div>
-          Code by <span className="accent">GPT-5, GEMINI 2.5, GROK 4</span>
+      <div className="footer-primary">
+        <div className="footer-center">
+          <div>
+            Code by <span className="accent">GPT-5, GEMINI 2.5, GROK 4</span>
+          </div>
+          <div>
+            CODE ORCHESTRATION by <span className="accent">end0</span>
+          </div>
+          <div>
+            <span className="version">V1.1</span>
+          </div>
         </div>
-        <div>
-          CODE ORCHESTRATION by <span className="accent">end0</span>
-        </div>
-        <div>
-          <span className="version">V1.1</span>
-        </div>
-        <div>
-          <a className="github-link-button" href="https://github.com/Endorpheen/IgorekChatBot" target="_blank" rel="noreferrer noopener">
-            GitHub
-          </a>
-        </div>
+        <a
+          className="github-link-button"
+          href="https://github.com/Endorpheen/IgorekChatBot"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          GitHub
+        </a>
+        <button
+          type="button"
+          className="settings-button footer-settings-hide-mobile"
+          title="Настройки"
+          onClick={openSettings}
+        >
+          <Settings className="icon" />
+          Настройки
+        </button>
       </div>
       <div className="desktop-widget">
         <ElevenLabsConvaiWidget />

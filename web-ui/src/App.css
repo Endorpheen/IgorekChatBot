@@ -965,6 +965,21 @@
   margin-top: 2rem;
 }
 
+.footer-primary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.footer-primary .footer-center {
+  flex: 1 1 auto;
+}
+
+.footer-primary .github-link-button {
+  flex-shrink: 0;
+}
+
 .desktop-widget .convai-widget elevenlabs-convai {
   position: relative !important;
 }
@@ -1808,6 +1823,17 @@
 }
 
 @media (max-width: 767px) {
+  .footer-primary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .footer-center {
+    text-align: left;
+  }
+
   .desktop-only {
     display: none;
   }
