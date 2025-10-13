@@ -1,8 +1,8 @@
-# === MCP и Telegram YouTube Bot на основном домене ===
+# === MCP и YouTube Bot на основном домене ===
 end0databox.duckdns.org {
     encode zstd gzip
 
-    # --- Telegram YouTube Bot ---
+    # --- YouTube Bot ---
     handle_path /bot/* {
         reverse_proxy localhost:8080
     }
@@ -10,7 +10,7 @@ end0databox.duckdns.org {
     # --- файлы только с токеном ---
     handle_path /files/* {
         @noauth not {
-            header Authorization "Bearer supersecret"
+            header Authorization "Bearer <token>"
         }
         respond @noauth 403
 

@@ -23,7 +23,7 @@ cp .env.example .env
 ```
 
 Основные переменные:
-- `TELEGRAM_BOT_TOKEN` - токен Telegram-бота
+- `OPENROUTER_API_KEY` - ключ OpenRouter (по желанию, можно переопределить в UI)
 
 ### 2. Сборка образа
 

@@ -28,6 +28,11 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
         <div>
           <span className="version">V1.1</span>
         </div>
+        <div>
+          <a className="github-link-button" href="https://github.com/Endorpheen/IgorekChatBot" target="_blank" rel="noreferrer noopener">
+            GitHub
+          </a>
+        </div>
       </div>
       <div className="desktop-widget">
         <ElevenLabsConvaiWidget />
