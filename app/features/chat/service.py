@@ -218,7 +218,31 @@ def call_ai_query(
 
                 tool_result = tool.invoke(parsed_args)
                 logger.info("[TOOL CALL] %s executed args=%s", name, parsed_args)
-                return str(tool_result)
+
+                prompt_for_llm = (
+                    "Сформулируй краткий и понятный ответ на русском языке на основе этих данных."
+                    " Не используй JSON, списки и лишние кавычки.\n\n"
+                    f"{tool_result}"
+                )
+                try:
+                    response_message = llm.invoke([HumanMessage(content=prompt_for_llm)])
+                    answer = (
+                        response_message.content.strip()
+                        if hasattr(response_message, "content") and response_message.content
+                        else str(response_message).strip()
+                    )
+                    if not answer:
+                        answer = str(tool_result)
+                except Exception as inner_exc:  # pragma: no cover
+                    logger.warning(
+                        "[TOOL RESPONSE] Не удалось переформулировать ответ для %s: %s",
+                        name,
+                        inner_exc,
+                    )
+                    answer = str(tool_result)
+
+                logger.info("[TOOL RESPONSE] Ответ пользователю: %s", (answer or "")[:200])
+                return answer
 
     except Exception as exc:  # pragma: no cover
         logger.warning(f"[AI QUERY] bind_tools недоступен, переход к fallback: {exc}")
