@@ -18,8 +18,12 @@ from app.features.image_analysis.router import router as image_analysis_router
 from app.features.image_generation.router import router as image_generation_router
 from app.features.root.router import router as root_router
 from app.features.seo.router import router as seo_router
-from app.features.uploads.cleaner import start_cleanup_task, stop_cleanup_task
-from app.features.uploads.router import router as uploads_router
+try:
+    from app.features.uploads.cleaner import start_cleanup_task, stop_cleanup_task
+    from app.features.uploads.router import router as uploads_router
+except ModuleNotFoundError:  # pragma: no cover
+    start_cleanup_task = stop_cleanup_task = None  # type: ignore[assignment]
+    uploads_router = None  # type: ignore[assignment]
 from app.logging import get_logger, setup_logging
 from app.middlewares.cors import setup_cors
 from app.settings import Settings, ensure_upload_directory, get_settings
@@ -31,13 +35,15 @@ def _lifespan(settings: Settings):
     @asynccontextmanager
     async def manager(_: FastAPI) -> AsyncIterator[None]:
         ensure_upload_directory(settings.upload_dir_path)
-        cleanup_task: Optional[asyncio.Task]
-        cleanup_task = await start_cleanup_task(settings, settings.upload_dir_path)
+        cleanup_task: Optional[asyncio.Task] = None
+        if start_cleanup_task is not None:
+            cleanup_task = await start_cleanup_task(settings, settings.upload_dir_path)
         await image_manager.startup()
         try:
             yield
         finally:
-            await stop_cleanup_task(cleanup_task)
+            if stop_cleanup_task is not None and cleanup_task is not None:
+                await stop_cleanup_task(cleanup_task)
             await image_manager.shutdown()
 
     return manager
@@ -65,7 +71,8 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(image_analysis_router)
     app.include_router(image_generation_router)
-    app.include_router(uploads_router)
+    if uploads_router is not None:
+        app.include_router(uploads_router)
     app.include_router(seo_router)
     app.include_router(root_router)
 

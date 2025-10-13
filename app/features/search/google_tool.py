@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import threading
-import time
 from collections import deque
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import requests
 from langchain.tools import tool
 
 from app.logging import get_logger
+time = importlib.import_module("time")
 from app.settings import Settings, get_settings
 
 
