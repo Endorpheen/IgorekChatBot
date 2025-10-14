@@ -1,68 +1,54 @@
-# Чат-бот Docker Deploy
+## Развертывание Igorek ChatBot
 
-## Обзор
+1. **Клонировать репозиторий**
 
-Этот проект содержит Docker-конфигурацию для развертывания чат-бота на той же VPS, где уже работает MCP-сервер.
+```bash
+git clone https://github.com/Endorpheen/IgorekChatBot.git
+cd IgorekChatBot
+```
 
-## Структура
-
-- `Dockerfile` - образ для чат-бота на Python 3.12
-- `docker-compose.yml` - оркестрация контейнеров
-- `.dockerignore` - файлы, исключаемые из Docker-образа
-- `.env.example` - пример файла с переменными окружения
-- `Caddyfile` - конфигурация веб-сервера с новым поддоменом
-
-## Развертывание
-
-### 1. Настройка переменных окружения
-
-Скопируйте `.env.example` в `.env` и заполните необходимые переменные:
+2. **Создать и настроить файл окружения**
 
 ```bash
 cp .env.example .env
 ```
 
-Основные переменные:
-- `OPENROUTER_API_KEY` - ключ OpenRouter (по желанию, можно переопределить в UI)
+Заполнить `.env` своими ключами при необходимости:
 
-### 2. Сборка образа
+* **OPENROUTER_API_KEY** — ключ OpenRouter (опционально, используется для генерации текста)
+* **TOGETHER_API_KEY** — ключ TogetherAI (для генерации изображений)
+* **REPLICATE_API_KEY** — ключ ReplicateAI (для моделей FLUX и SDXL)
+* **STABILITY_API_KEY** — ключ StabilityAI (опционально, если есть кредиты)
+* **GOOGLE_CSE_ID** — идентификатор Google Custom Search Engine
+* **GOOGLE_API_KEY** — API-ключ Google для веб-поиска
+
+3. **Собрать и запустить контейнер**
 
 ```bash
-docker compose build
+docker compose up -d --build
 ```
 
-### 3. Запуск контейнера
+4. **Проверить работу**
 
 ```bash
+docker compose logs -f chatbot
+```
+
+После запуска чат-бот будет доступен по адресу:
+**[https://igorekchatbot.ru](https://igorekchatbot.ru)**
+
+5. **Обновить код до последней версии**
+
+Если репозиторий уже существует:
+
+```bash
+cd ~/igorekchatbot
+git pull origin main
 docker compose up -d
 ```
 
-### 4. Обновление
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-## Доступ
-
-После развертывания чат-бот будет доступен по адресу:
-- **Основной MCP-сервер**: `https://end0databox.duckdns.org`
-- **Чат-бот**: `https://igorek.end0databox.duckdns.org`
-
-## Сеть
-
-Контейнер чат-бота подключается к существующей сети `mcp-network`, что позволяет ему общаться с другими сервисами через их имена контейнеров.
-
-## Логи
-
-Для просмотра логов чат-бота:
-
-```bash
-docker compose logs chatbot
-```
-
-## Остановка
+6. **Остановить контейнер**
 
 ```bash
 docker compose down
+```
