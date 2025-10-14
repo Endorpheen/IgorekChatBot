@@ -19,7 +19,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY telegram_bot.py .
 COPY app ./app
 COPY image_generation ./image_generation
-COPY mcp-cli.py .
 
 # копируем собранный WebUI из первого этапа
 COPY --from=build-webui /webui/dist ./web-ui

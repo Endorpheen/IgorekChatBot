@@ -1,11 +1,8 @@
-"""Image generation queue and Together API integration."""
+"""Управление мультипровайдерной генерацией изображений."""
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import hashlib
-import io
 import logging
 import os
 import random
@@ -16,37 +13,29 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Deque, Dict, Optional, TypedDict
+from typing import Any, Deque, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import copy
 
-import requests
-
-ALLOWED_TOGETHER_MODEL = "black-forest-labs/FLUX.1-schnell-Free"
-
-
-class ModelCapabilities(TypedDict):
-    model: str
-    steps_allowed: list[int]
-    default_steps: int
-    sizes_allowed: list[int]
-    default_size: int
-
-
-MODEL_CAPABILITIES: ModelCapabilities = {
-    "model": ALLOWED_TOGETHER_MODEL,
-    "steps_allowed": [1, 2, 3, 4],
-    "default_steps": 4,
-    "sizes_allowed": [512, 768, 1024],
-    "default_size": 1024,
-}
+from .providers import PROVIDER_REGISTRY, build_adapter
+from .providers.base import (
+    DEFAULT_CFG,
+    DEFAULT_SEED_RANGE,
+    DEFAULT_SIZE_PRESETS,
+    DEFAULT_STEPS,
+    GenerateResult,
+    ImageProviderAdapter,
+    ProviderError,
+    ProviderErrorCode,
+    ProviderModelSpec,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class ImageGenerationError(Exception):
-    """Base exception for image generation failures."""
+    """Базовое исключение для ошибок генерации."""
 
     def __init__(self, message: str, *, status_code: int = 500, error_code: str = "internal_error") -> None:
         super().__init__(message)
@@ -58,11 +47,17 @@ class ImageGenerationError(Exception):
 class ImageJobPayload:
     job_id: str
     prompt: str
+    provider_id: str
+    model_id: str
     width: int
     height: int
     steps: int
+    cfg: float | None
+    seed: int | None
+    mode: str | None
+    params: Dict[str, Any]
     session_id: str
-    together_key: str
+    api_key: str
     key_fingerprint: str
     created_at: datetime
 
@@ -72,9 +67,13 @@ class ImageJobRecord:
     job_id: str
     prompt: str
     provider: str
+    model: str
     width: int
     height: int
     steps: int
+    cfg: float | None
+    seed: int | None
+    mode: str | None
     status: str
     session_id: str
     created_at: datetime
@@ -93,11 +92,15 @@ class JobStatus:
     error_code: Optional[str]
     error_message: Optional[str]
     result_path: Optional[str]
+    provider: str
+    model: str
+    prompt: str
     width: int
     height: int
     steps: int
-    prompt: str
-    provider: str
+    cfg: float | None
+    seed: int | None
+    mode: str | None
     session_id: str
     created_at: datetime
     updated_at: datetime
@@ -106,18 +109,23 @@ class JobStatus:
     duration_ms: Optional[int]
 
 
+@dataclass(slots=True)
+class ModelCacheEntry:
+    models: List[ProviderModelSpec]
+    fetched_at: float
+
+
+@dataclass(slots=True)
+class BreakerState:
+    fail_count: int = 0
+    cooldown_until: float = 0.0
+
+
 class ImageGenerationManager:
-    """Manages image generation jobs and queue processing."""
+    """Менеджер очереди генерации изображений."""
 
     def __init__(self) -> None:
-        self.provider_name = os.getenv("TOGETHER_PROVIDER_NAME", "together-flux")
-        self.capabilities = copy.deepcopy(MODEL_CAPABILITIES)
-        self.together_model = self.capabilities["model"]
-        self.together_url = os.getenv(
-            "TOGETHER_GENERATE_URL",
-            "https://api.together.xyz/v1/images/generations",
-        )
-        self.validate_url = os.getenv("TOGETHER_VALIDATE_URL", "https://api.together.xyz/v1/models")
+        self.registry = copy.deepcopy(PROVIDER_REGISTRY)
         self.output_dir = Path(os.getenv("IMAGE_OUTPUT_DIR", Path.cwd() / "data" / "images")).resolve()
         self.db_path = Path(os.getenv("IMAGE_JOBS_DB", Path.cwd() / "data" / "image_jobs.sqlite")).resolve()
         self.queue_limit = max(1, int(os.getenv("IMAGE_QUEUE_LIMIT", "50")))
@@ -126,18 +134,22 @@ class ImageGenerationManager:
         self.rate_window = max(1, int(os.getenv("IMAGE_RATE_LIMIT_WINDOW", "5")))
         self.rate_max = max(1, int(os.getenv("IMAGE_RATE_LIMIT_MAX", "1")))
         self.active_limit = max(1, int(os.getenv("IMAGE_ACTIVE_LIMIT", "3")))
-        self.allowed_sizes = self._build_allowed_sizes()
-        self.allowed_steps = set(self.capabilities["steps_allowed"])
-        self.max_prompt_chars = max(1, int(os.getenv("IMAGE_MAX_PROMPT_LEN", "800")))
         self.worker_count = max(1, int(os.getenv("IMAGE_WORKERS", "1")))
+        self.max_prompt_chars = max(1, int(os.getenv("IMAGE_MAX_PROMPT_LEN", "800")))
+        self.model_cache_ttl = max(60, int(os.getenv("IMAGE_MODEL_CACHE_TTL", str(60 * 20))))
+        self.breaker_threshold = max(1, int(os.getenv("IMAGE_BREAKER_THRESHOLD", "3")))
+        self.breaker_cooldown = max(1, int(os.getenv("IMAGE_BREAKER_COOLDOWN", "60")))
 
         self._queue: asyncio.Queue[ImageJobPayload] | None = None
         self._queue_lock: asyncio.Lock | None = None
         self._workers: list[asyncio.Task[None]] = []
-        self._active_by_key: Dict[str, int] = defaultdict(int)
+        self._active_by_key: Dict[Tuple[str, str], int] = defaultdict(int)
         self._active_by_session: Dict[str, int] = defaultdict(int)
-        self._rate_by_key: Dict[str, Deque[float]] = defaultdict(deque)
+        self._rate_by_key: Dict[Tuple[str, str], Deque[float]] = defaultdict(deque)
         self._rate_by_session: Dict[str, Deque[float]] = defaultdict(deque)
+        self._breaker: Dict[Tuple[str, str], BreakerState] = defaultdict(BreakerState)
+        self._model_cache: Dict[Tuple[str, str], ModelCacheEntry] = {}
+        self._adapters: Dict[str, ImageProviderAdapter] = {}
         self._db_lock = threading.Lock()
 
     async def startup(self) -> None:
@@ -152,7 +164,7 @@ class ImageGenerationManager:
             task = asyncio.create_task(self._worker())
             self._workers.append(task)
         logger.info(
-            "[IMAGE QUEUE] Initialised: workers=%s queue_limit=%s active_limit=%s", 
+            "[IMAGE QUEUE] Initialised: workers=%s queue_limit=%s active_limit=%s",
             self.worker_count,
             self.queue_limit,
             self.active_limit,
@@ -174,43 +186,62 @@ class ImageGenerationManager:
     async def enqueue_job(
         self,
         *,
+        provider_id: str,
+        model_id: str,
         prompt: str,
-        width: int,
-        height: int,
-        steps: int,
+        params: Dict[str, Any],
         session_id: str,
-        together_key: str,
+        api_key: str,
     ) -> str:
         if not self._queue or not self._queue_lock:
             raise ImageGenerationError("Очередь генерации недоступна", status_code=503, error_code="service_unavailable")
 
+        provider_id = provider_id.lower().strip()
+        if provider_id not in self.registry:
+            raise ImageGenerationError("Указан неподдерживаемый провайдер", status_code=400, error_code="provider_unknown")
+        session_id = session_id.strip() or "unknown-session"
         normalised_prompt = prompt.strip()
         if not normalised_prompt:
             raise ImageGenerationError("Укажите подсказку для генерации", status_code=400, error_code="prompt_required")
         if len(normalised_prompt) > self.max_prompt_chars:
             raise ImageGenerationError("Подсказка слишком длинная", status_code=400, error_code="prompt_too_long")
 
-        if (width, height) not in self.allowed_sizes:
-            raise ImageGenerationError("Недопустимый размер изображения", status_code=400, error_code="size_not_allowed")
-        if steps not in self.allowed_steps:
+        key_fingerprint = self._fingerprint(api_key)
+        breaker_key = (provider_id, key_fingerprint)
+        now = time.monotonic()
+        breaker_state = self._breaker[breaker_key]
+        if breaker_state.cooldown_until > now:
+            cooldown = int(breaker_state.cooldown_until - now)
             raise ImageGenerationError(
-                "steps must be between 1 and 4",
-                status_code=400,
-                error_code="steps_out_of_range",
+                f"Провайдер временно охлаждён после ошибок. Подождите {cooldown} с.",
+                status_code=429,
+                error_code="provider_cooldown",
             )
 
-        session_id = session_id.strip() or "unknown-session"
-        fingerprint = hashlib.sha256(together_key.encode("utf-8")).hexdigest()
-        now = time.monotonic()
+        adapter = self._get_adapter(provider_id)
+        model_spec = await self._ensure_model_spec(provider_id, model_id, api_key)
+
+        try:
+            validated = adapter.validate_params(model_id, params, model_spec=model_spec)
+        except ProviderError as exc:
+            raise self._map_provider_error(exc) from exc
+
+        validated.setdefault("model", model_id)
+        width = int(validated.get("width", DEFAULT_SIZE_PRESETS[0][0]))
+        height = int(validated.get("height", DEFAULT_SIZE_PRESETS[0][1]))
+        steps = int(validated.get("steps", DEFAULT_STEPS))
+        cfg = validated.get("cfg")
+        seed = validated.get("seed")
+        mode = validated.get("mode")
 
         async with self._queue_lock:
             if self._queue.qsize() >= self.queue_limit:
                 raise ImageGenerationError("Очередь переполнена. Попробуйте позже.", status_code=503, error_code="queue_overflow")
 
-            self._enforce_rate_limit(self._rate_by_key, fingerprint, now, subject="key")
+            self._enforce_rate_limit(self._rate_by_key, breaker_key, now, subject="key")
             self._enforce_rate_limit(self._rate_by_session, session_id, now, subject="session")
 
-            if self._active_by_key[fingerprint] >= self.active_limit:
+            if self._active_by_key[breaker_key] >= self.active_limit:
                 raise ImageGenerationError(
                     "Превышен лимит активных задач для этого ключа.",
                     status_code=429,
@@ -228,12 +259,18 @@ class ImageGenerationManager:
             payload = ImageJobPayload(
                 job_id=job_id,
                 prompt=normalised_prompt,
+                provider_id=provider_id,
+                model_id=model_id,
                 width=width,
                 height=height,
                 steps=steps,
+                cfg=float(cfg) if cfg is not None else None,
+                seed=int(seed) if isinstance(seed, int) else None,
+                mode=str(mode) if mode else None,
+                params=validated,
                 session_id=session_id,
-                together_key=together_key,
-                key_fingerprint=fingerprint,
+                api_key=api_key,
+                key_fingerprint=key_fingerprint,
                 created_at=created_at,
             )
 
@@ -243,14 +280,20 @@ class ImageGenerationManager:
                 logger.error("[IMAGE QUEUE] DB insert failed: %s", exc)
                 raise ImageGenerationError("Не удалось создать задачу", status_code=500, error_code="db_error") from exc
 
-            self._active_by_key[fingerprint] += 1
+            self._active_by_key[breaker_key] += 1
             self._active_by_session[session_id] += 1
-            self._rate_by_key[fingerprint].append(now)
+            self._rate_by_key[breaker_key].append(now)
             self._rate_by_session[session_id].append(now)
 
             await self._queue.put(payload)
 
-        logger.info("[IMAGE QUEUE] Job queued: %s session=%s", job_id, session_id)
+        logger.info(
+            "[IMAGE QUEUE] Job queued: %s provider=%s model=%s session=%s",
+            job_id,
+            provider_id,
+            model_id,
+            session_id,
+        )
         return job_id
 
     async def get_job_status(self, job_id: str) -> Optional[JobStatus]:
@@ -268,11 +311,15 @@ class ImageGenerationManager:
             error_code=record.error_code,
             error_message=record.error_message,
             result_path=record.result_path,
+            provider=record.provider,
+            model=record.model,
+            prompt=record.prompt,
             width=record.width,
             height=record.height,
             steps=record.steps,
-            prompt=record.prompt,
-            provider=record.provider,
+            cfg=record.cfg,
+            seed=record.seed,
+            mode=record.mode,
             session_id=record.session_id,
             created_at=record.created_at,
             updated_at=record.updated_at,
@@ -281,41 +328,51 @@ class ImageGenerationManager:
             duration_ms=record.duration_ms,
         )
 
-    async def validate_key(self, together_key: str) -> None:
-        def _request() -> requests.Response:
-            return requests.get(
-                self.validate_url,
-                headers={"Authorization": f"Bearer {together_key}"},
-                timeout=15,
-            )
-
+    async def validate_key(self, provider_id: str, api_key: str) -> None:
+        provider_id = provider_id.lower().strip()
+        if provider_id not in self.registry:
+            raise ImageGenerationError("Неизвестный провайдер", status_code=400, error_code="provider_unknown")
+        adapter = self._get_adapter(provider_id)
         try:
-            response = await asyncio.to_thread(_request)
-        except requests.Timeout as exc:
-            raise ImageGenerationError("Проверка ключа превысила лимит времени", status_code=504, error_code="timeout") from exc
-        except requests.RequestException as exc:
-            raise ImageGenerationError("Не удалось связаться с Together", status_code=502, error_code="provider_unreachable") from exc
+            adapter.list_models(api_key, force=True)
+        except ProviderError as exc:
+            raise self._map_provider_error(exc) from exc
 
-        status = response.status_code
-        if status == 200:
-            return
-        if status in {401, 403}:
-            raise ImageGenerationError("Ключ Together отклонён", status_code=status, error_code="invalid_key")
-        if status == 429:
-            raise ImageGenerationError("Превышен лимит Together", status_code=status, error_code="provider_rate_limited")
-        if status >= 500:
-            raise ImageGenerationError("Сервис Together недоступен", status_code=status, error_code="provider_unavailable")
+    async def get_provider_models(
+        self,
+        provider_id: str,
+        api_key: str,
+        *,
+        force: bool = False,
+    ) -> List[ProviderModelSpec]:
+        provider_id = provider_id.lower().strip()
+        if provider_id not in self.registry:
+            raise ImageGenerationError("Неизвестный провайдер", status_code=400, error_code="provider_unknown")
+        return await self._load_models(provider_id, api_key, force=force)
 
-        message = self._extract_error_message(response, default="Ключ не прошёл проверку")
-        raise ImageGenerationError(message, status_code=status, error_code="provider_error")
+    def list_providers(self) -> List[Dict[str, Any]]:
+        providers = []
+        for entry in self.registry.values():
+            providers.append(
+                {
+                    "id": entry["id"],
+                    "label": entry.get("label", entry["id"]),
+                    "enabled": entry.get("enabled", True),
+                    "description": entry.get("description"),
+                    "recommended_models": list(entry.get("recommended_models", [])),
+                }
+            )
+        return providers
 
-    def ensure_session_access(self, job_id: str, session_id: str) -> bool:
-        record = self._fetch_job_record(job_id)
-        if not record:
-            return False
-        return record.session_id == session_id
+    # Внутренние методы --------------------------------------------------
 
-    # Internal helpers -----------------------------------------------------
+    def _get_adapter(self, provider_id: str) -> ImageProviderAdapter:
+        try:
+            return self._adapters[provider_id]
+        except KeyError:
+            adapter = build_adapter(provider_id)
+            self._adapters[provider_id] = adapter
+            return adapter
 
     async def _worker(self) -> None:
         while True:
@@ -334,6 +391,7 @@ class ImageGenerationManager:
                 self._release_payload(payload)
 
     async def _process_job(self, payload: ImageJobPayload) -> None:
+        breaker_key = (payload.provider_id, payload.key_fingerprint)
         start_perf = time.perf_counter()
         started_at = self._utcnow()
         self._update_job_record(
@@ -343,156 +401,174 @@ class ImageGenerationManager:
             updated_at=started_at,
         )
 
-        try:
-            image_bytes = await self._call_together(payload)
-        except ImageGenerationError as exc:
-            logger.info("[IMAGE QUEUE] Job failed: %s code=%s", payload.job_id, exc.error_code)
-            self._update_job_record(
-                payload.job_id,
-                status="error",
-                error_code=exc.error_code,
-                error_message=str(exc),
-                updated_at=self._utcnow(),
-                completed_at=self._utcnow(),
-            )
-            return
-        except Exception as exc:  # pragma: no cover - unexpected errors
-            logger.exception("[IMAGE QUEUE] Job crashed: %s", payload.job_id)
-            self._update_job_record(
-                payload.job_id,
-                status="error",
-                error_code="internal_error",
-                error_message="Внутренняя ошибка генерации",
-                updated_at=self._utcnow(),
-                completed_at=self._utcnow(),
-            )
-            return
+        adapter = self._get_adapter(payload.provider_id)
+        attempt = 0
+        last_error: Optional[ProviderError] = None
+        while attempt <= self.max_retries:
+            attempt += 1
+            try:
+                result = await adapter.generate(payload.prompt, payload.params, payload.api_key)
+                self._reset_breaker(breaker_key)
+                await self._store_success(payload, result, start_perf)
+                return
+            except ProviderError as exc:
+                last_error = exc
+                should_retry = exc.code in {
+                    ProviderErrorCode.PROVIDER_ERROR,
+                    ProviderErrorCode.TIMEOUT,
+                }
+                if exc.code == ProviderErrorCode.RATE_LIMIT and exc.retry_after:
+                    await asyncio.sleep(min(float(exc.retry_after), 5.0))
+                    should_retry = True
+                if not should_retry or attempt > self.max_retries:
+                    break
+                await asyncio.sleep(self._retry_delay(attempt))
+            except Exception as exc:  # pragma: no cover - unexpected
+                logger.exception("[IMAGE QUEUE] Job crashed: %s", payload.job_id)
+                last_error = ProviderError(ProviderErrorCode.INTERNAL, "Неожиданная ошибка генерации")
+                break
 
-        try:
-            output_path = self._store_image(payload.job_id, image_bytes)
-        except OSError as exc:
-            logger.error("[IMAGE QUEUE] Store failed: %s -> %s", payload.job_id, exc)
-            self._update_job_record(
-                payload.job_id,
-                status="error",
-                error_code="storage_error",
-                error_message="Не удалось сохранить изображение",
-                updated_at=self._utcnow(),
-                completed_at=self._utcnow(),
-            )
-            return
-
-        completed_at = self._utcnow()
-        duration_ms = int((time.perf_counter() - start_perf) * 1000)
+        self._register_failure(breaker_key, last_error)
+        error_code, error_message = self._provider_error_to_payload(last_error)
+        logger.info(
+            "[IMAGE QUEUE] Job failed: %s provider=%s code=%s",
+            payload.job_id,
+            payload.provider_id,
+            error_code,
+        )
         self._update_job_record(
             payload.job_id,
-            status="done",
-            result_path=str(output_path),
-            updated_at=completed_at,
-            completed_at=completed_at,
-            duration_ms=duration_ms,
+            status="error",
+            error_code=error_code,
+            error_message=error_message,
+            updated_at=self._utcnow(),
+            completed_at=self._utcnow(),
         )
-        logger.info("[IMAGE QUEUE] Job done: %s", payload.job_id)
 
-    async def _call_together(self, payload: ImageJobPayload) -> bytes:
-        body: Dict[str, Any] = {
-            "model": self.together_model,
-            "prompt": payload.prompt,
-            "width": payload.width,
-            "height": payload.height,
-            "steps": payload.steps,
-            "n": 1,
-            "response_format": "b64_json",
-            "image_format": "webp",
-        }
-        headers = {
-            "Authorization": f"Bearer {payload.together_key}",
-            "Content-Type": "application/json",
-        }
+    async def _store_success(self, payload: ImageJobPayload, result: GenerateResult, start_perf: float) -> None:
+        if result.image_bytes is None and result.image_url:
+            logger.error("[IMAGE QUEUE] Provider returned URL-only result, unsupported: %s", payload.provider_id)
+            raise ProviderError(ProviderErrorCode.PROVIDER_ERROR, "Провайдер вернул неподдерживаемый результат")
 
-        attempt = 0
-        while True:
-            attempt += 1
-
-            def _request() -> requests.Response:
-                return requests.post(
-                    self.together_url,
-                    headers=headers,
-                    json=body,
-                    timeout=self.timeout_seconds,
-                )
-
-            try:
-                response = await asyncio.to_thread(_request)
-            except requests.Timeout:
-                raise ImageGenerationError("Генерация превысила лимит времени", status_code=504, error_code="timeout")
-            except requests.RequestException as exc:
-                if attempt <= self.max_retries:
-                    await asyncio.sleep(self._retry_delay(attempt))
-                    continue
-                raise ImageGenerationError("Не удалось связаться с Together", status_code=502, error_code="provider_unreachable") from exc
-
-            status = response.status_code
-            if status >= 500:
-                if attempt <= self.max_retries:
-                    await asyncio.sleep(self._retry_delay(attempt))
-                    continue
-                raise ImageGenerationError("Сервис Together недоступен", status_code=status, error_code="provider_unavailable")
-            if status in {401, 403}:
-                raise ImageGenerationError("Ключ Together отклонён", status_code=status, error_code="invalid_key")
-            if status == 429:
-                raise ImageGenerationError("Превышен лимит Together", status_code=status, error_code="provider_rate_limited")
-            if status >= 400:
-                message = self._extract_error_message(response, default="Провайдер отклонил запрос")
-                lower = message.lower()
-                if "unable to access model" in lower or "model" in lower and "access" in lower:
-                    raise ImageGenerationError(
-                        f"Модель недоступна. Разрешена: {ALLOWED_TOGETHER_MODEL}",
-                        status_code=400,
-                        error_code="model_not_allowed",
-                    )
-                raise ImageGenerationError(message, status_code=status, error_code="provider_error")
-
-            try:
-                payload_json = response.json()
-            except ValueError as exc:
-                raise ImageGenerationError("Неверный ответ Together", status_code=502, error_code="invalid_response") from exc
-
-            try:
-                data = payload_json.get("data")
-                if not isinstance(data, list) or not data:
-                    raise ValueError("data")
-                first = data[0]
-                b64_value = first.get("b64_json")
-                if not isinstance(b64_value, str):
-                    raise ValueError("b64_json")
-                return base64.b64decode(b64_value)
-            except (ValueError, TypeError, binascii.Error) as exc:  # type: ignore[name-defined]
-                raise ImageGenerationError("Ответ Together не содержит изображение", status_code=502, error_code="invalid_response") from exc
-
-    def _store_image(self, job_id: str, image_bytes: bytes) -> Path:
+        image_bytes = result.image_bytes or b""
         if not self._looks_like_webp(image_bytes):
+            # Попытаемся завернуть в WEBP через pillow.
             try:
                 from PIL import Image  # type: ignore
+
+                import io
 
                 with Image.open(io.BytesIO(image_bytes)) as img:
                     buffer = io.BytesIO()
                     img.save(buffer, format="WEBP", quality=88, method=6)
                     image_bytes = buffer.getvalue()
             except ImportError:
-                logger.warning("[IMAGE QUEUE] Pillow не установлен, сохраняю исходный формат для job %s", job_id)
-            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning("[IMAGE QUEUE] Pillow не установлен, сохраняю исходный формат для job %s", payload.job_id)
+            except Exception as exc:  # pragma: no cover
                 logger.warning("[IMAGE QUEUE] Не удалось конвертировать в WEBP: %s", exc)
 
-        file_path = self.output_dir / f"{job_id}.webp"
+        file_path = self.output_dir / f"{payload.job_id}.webp"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "wb") as file_obj:
             file_obj.write(image_bytes)
-        return file_path
+
+        completed_at = self._utcnow()
+        duration_ms = int((time.perf_counter() - start_perf) * 1000)
+        self._update_job_record(
+            payload.job_id,
+            status="done",
+            result_path=str(file_path),
+            updated_at=completed_at,
+            completed_at=completed_at,
+            duration_ms=duration_ms,
+        )
+        logger.info(
+            "[IMAGE QUEUE] Job done: %s provider=%s model=%s duration_ms=%s",
+            payload.job_id,
+            payload.provider_id,
+            payload.model_id,
+            duration_ms,
+        )
+
+    async def _ensure_model_spec(self, provider_id: str, model_id: str, api_key: str) -> ProviderModelSpec:
+        models = await self._load_models(provider_id, api_key, force=False)
+        for spec in models:
+            if spec.get("id") == model_id:
+                return spec
+        # Попробуем принудительно обновить
+        models = await self._load_models(provider_id, api_key, force=True)
+        for spec in models:
+            if spec.get("id") == model_id:
+                return spec
+        raise ImageGenerationError("Модель не найдена у провайдера", status_code=400, error_code="model_unknown")
+
+    async def _load_models(self, provider_id: str, api_key: str, *, force: bool) -> List[ProviderModelSpec]:
+        key_fingerprint = self._fingerprint(api_key)
+        cache_key = (provider_id, key_fingerprint)
+        now = time.monotonic()
+        cache_entry = self._model_cache.get(cache_key)
+        if cache_entry and not force and now - cache_entry.fetched_at < self.model_cache_ttl:
+            return copy.deepcopy(cache_entry.models)
+
+        adapter = self._get_adapter(provider_id)
+        try:
+            models = adapter.list_models(api_key, force=force)
+        except ProviderError as exc:
+            raise self._map_provider_error(exc) from exc
+
+        self._model_cache[cache_key] = ModelCacheEntry(models=models, fetched_at=now)
+        return copy.deepcopy(models)
+
+    def _register_failure(self, breaker_key: Tuple[str, str], exc: Optional[ProviderError]) -> None:
+        state = self._breaker[breaker_key]
+        state.fail_count += 1
+        if state.fail_count >= self.breaker_threshold:
+            state.cooldown_until = time.monotonic() + self.breaker_cooldown
+        if exc:
+            logger.warning(
+                "[IMAGE QUEUE] provider=%s key=%s failure=%s count=%s",
+                breaker_key[0],
+                breaker_key[1][:8],
+                exc.code.value,
+                state.fail_count,
+            )
+
+    def _reset_breaker(self, breaker_key: Tuple[str, str]) -> None:
+        state = self._breaker[breaker_key]
+        state.fail_count = 0
+        state.cooldown_until = 0.0
+
+    def _provider_error_to_payload(self, exc: Optional[ProviderError]) -> Tuple[str, str]:
+        if not exc:
+            return "provider_error", "Неизвестная ошибка провайдера"
+        mapping = {
+            ProviderErrorCode.UNAUTHORIZED: ("unauthorized", "Ключ отклонён провайдером"),
+            ProviderErrorCode.RATE_LIMIT: ("rate_limit", "Провайдер ограничил частоту запросов"),
+            ProviderErrorCode.BAD_REQUEST: ("bad_request", str(exc)),
+            ProviderErrorCode.PROVIDER_ERROR: ("provider_error", "Провайдер недоступен"),
+            ProviderErrorCode.TIMEOUT: ("timeout", "Истек таймаут генерации"),
+            ProviderErrorCode.INTERNAL: ("internal_error", "Внутренняя ошибка генерации"),
+        }
+        return mapping.get(exc.code, ("provider_error", str(exc)))
+
+    def _map_provider_error(self, exc: ProviderError) -> ImageGenerationError:
+        mapping = {
+            ProviderErrorCode.UNAUTHORIZED: 401,
+            ProviderErrorCode.RATE_LIMIT: 429,
+            ProviderErrorCode.BAD_REQUEST: 400,
+            ProviderErrorCode.PROVIDER_ERROR: 502,
+            ProviderErrorCode.TIMEOUT: 504,
+            ProviderErrorCode.INTERNAL: 500,
+        }
+        return ImageGenerationError(str(exc), status_code=mapping[exc.code], error_code=exc.code.value.lower())
 
     def _release_payload(self, payload: ImageJobPayload) -> None:
-        self._active_by_key[payload.key_fingerprint] = max(0, self._active_by_key[payload.key_fingerprint] - 1)
+        breaker_key = (payload.provider_id, payload.key_fingerprint)
+        self._active_by_key[breaker_key] = max(0, self._active_by_key[breaker_key] - 1)
         self._active_by_session[payload.session_id] = max(0, self._active_by_session[payload.session_id] - 1)
-        payload.together_key = ""
+        payload.api_key = ""
+
+    # Работа с базой -----------------------------------------------------
 
     def _init_db(self) -> None:
         with self._db_lock:
@@ -505,9 +581,13 @@ class ImageGenerationManager:
                         job_id TEXT PRIMARY KEY,
                         prompt TEXT NOT NULL,
                         provider TEXT NOT NULL,
+                        model TEXT NOT NULL,
                         width INTEGER NOT NULL,
                         height INTEGER NOT NULL,
                         steps INTEGER NOT NULL,
+                        cfg REAL,
+                        seed INTEGER,
+                        mode TEXT,
                         status TEXT NOT NULL,
                         session_id TEXT NOT NULL,
                         created_at TEXT NOT NULL,
@@ -521,6 +601,17 @@ class ImageGenerationManager:
                     )
                     """
                 )
+                existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(image_jobs)")}
+                for column_def in (
+                    ("provider", "TEXT"),
+                    ("model", "TEXT"),
+                    ("cfg", "REAL"),
+                    ("seed", "INTEGER"),
+                    ("mode", "TEXT"),
+                ):
+                    if column_def[0] not in existing_columns:
+                        conn.execute(f"ALTER TABLE image_jobs ADD COLUMN {column_def[0]} {column_def[1]}")
+                conn.commit()
             finally:
                 conn.close()
 
@@ -531,17 +622,22 @@ class ImageGenerationManager:
                 conn.execute(
                     """
                     INSERT INTO image_jobs (
-                        job_id, prompt, provider, width, height, steps, status, session_id, created_at, updated_at
+                        job_id, prompt, provider, model, width, height, steps, cfg, seed, mode,
+                        status, session_id, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         payload.job_id,
                         payload.prompt,
-                        self.provider_name,
+                        payload.provider_id,
+                        payload.model_id,
                         payload.width,
                         payload.height,
                         payload.steps,
+                        payload.cfg,
+                        payload.seed,
+                        payload.mode,
                         "queued",
                         payload.session_id,
                         self._isoformat(payload.created_at),
@@ -560,12 +656,12 @@ class ImageGenerationManager:
         result_path: Optional[str] = None,
         error_code: Optional[str] = None,
         error_message: Optional[str] = None,
+        updated_at: Optional[datetime] = None,
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None,
         duration_ms: Optional[int] = None,
     ) -> None:
-        fields: list[str] = []
+        fields = []
         params: list[Any] = []
         if status is not None:
             fields.append("status = ?")
@@ -579,15 +675,16 @@ class ImageGenerationManager:
         if error_message is not None:
             fields.append("error_message = ?")
             params.append(error_message)
+        if updated_at is None:
+            updated_at = self._utcnow()
+        fields.append("updated_at = ?")
+        params.append(self._isoformat(updated_at))
         if started_at is not None:
             fields.append("started_at = ?")
             params.append(self._isoformat(started_at))
         if completed_at is not None:
             fields.append("completed_at = ?")
             params.append(self._isoformat(completed_at))
-        if updated_at is not None:
-            fields.append("updated_at = ?")
-            params.append(self._isoformat(updated_at))
         if duration_ms is not None:
             fields.append("duration_ms = ?")
             params.append(duration_ms)
@@ -595,13 +692,11 @@ class ImageGenerationManager:
         if not fields:
             return
 
-        fields_clause = ", ".join(fields)
         params.append(job_id)
-
         with self._db_lock:
             conn = sqlite3.connect(self.db_path, timeout=10)
             try:
-                conn.execute(f"UPDATE image_jobs SET {fields_clause} WHERE job_id = ?", tuple(params))
+                conn.execute(f"UPDATE image_jobs SET {', '.join(fields)} WHERE job_id = ?", tuple(params))
                 conn.commit()
             finally:
                 conn.close()
@@ -612,8 +707,8 @@ class ImageGenerationManager:
             try:
                 row = conn.execute(
                     """
-                    SELECT job_id, prompt, provider, width, height, steps, status, session_id,
-                           created_at, updated_at, started_at, completed_at, duration_ms,
+                    SELECT job_id, prompt, provider, model, width, height, steps, cfg, seed, mode, status,
+                           session_id, created_at, updated_at, started_at, completed_at, duration_ms,
                            error_code, error_message, result_path
                     FROM image_jobs
                     WHERE job_id = ?
@@ -630,9 +725,13 @@ class ImageGenerationManager:
             job_id,
             prompt,
             provider,
+            model,
             width,
             height,
             steps,
+            cfg,
+            seed,
+            mode,
             status,
             session_id,
             created_at,
@@ -649,9 +748,13 @@ class ImageGenerationManager:
             job_id=job_id,
             prompt=prompt,
             provider=provider,
+            model=model,
             width=int(width),
             height=int(height),
             steps=int(steps),
+            cfg=float(cfg) if cfg is not None else None,
+            seed=int(seed) if seed is not None else None,
+            mode=mode,
             status=status,
             session_id=session_id,
             created_at=self._parse_dt(created_at),
@@ -664,10 +767,12 @@ class ImageGenerationManager:
             result_path=result_path,
         )
 
+    # Утилиты -------------------------------------------------------------
+
     def _enforce_rate_limit(
         self,
-        bucket: Dict[str, Deque[float]],
-        key: str,
+        bucket: Dict[Any, Deque[float]],
+        key: Any,
         now: float,
         *,
         subject: str,
@@ -690,25 +795,13 @@ class ImageGenerationManager:
             )
 
     def _retry_delay(self, attempt: int) -> float:
-        base = 1.5 ** attempt
-        jitter = random.uniform(0.2, 0.6)
-        return min(10.0, base + jitter)
+        base = 0.5 + attempt * 0.5
+        jitter = random.uniform(0.1, 0.4)
+        return min(5.0, base + jitter)
 
-    def _extract_error_message(self, response: requests.Response, *, default: str) -> str:
-        try:
-            payload = response.json()
-            if isinstance(payload, dict):
-                error = payload.get("error")
-                if isinstance(error, dict):
-                    message = error.get("message")
-                    if isinstance(message, str) and message.strip():
-                        return message.strip()
-                message = payload.get("message")
-                if isinstance(message, str) and message.strip():
-                    return message.strip()
-        except ValueError:
-            pass
-        return default
+    @staticmethod
+    def _fingerprint(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _looks_like_webp(image_bytes: bytes) -> bool:
@@ -726,22 +819,12 @@ class ImageGenerationManager:
     def _utcnow() -> datetime:
         return datetime.now(timezone.utc)
 
-    def _build_allowed_sizes(self) -> set[tuple[int, int]]:
-        sizes: set[tuple[int, int]] = set()
-        for size in self.capabilities["sizes_allowed"]:
-            sizes.add((size, size))
-        if not sizes:
-            default_size = self.capabilities["default_size"]
-            sizes.add((default_size, default_size))
-        return sizes
-
 
 image_manager = ImageGenerationManager()
 
 
-def get_allowed_model() -> str:
-    return ALLOWED_TOGETHER_MODEL
-
-
-def get_model_capabilities() -> ModelCapabilities:
-    return copy.deepcopy(MODEL_CAPABILITIES)
+__all__ = [
+    "ImageGenerationManager",
+    "ImageGenerationError",
+    "image_manager",
+]

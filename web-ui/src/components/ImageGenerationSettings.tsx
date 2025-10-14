@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, ShieldOff, CheckCircle2, AlertCircle, KeyRound } from 'lucide-react';
 import {
-  deleteTogetherKey,
+  deleteProviderKey,
   InvalidPinError,
   loadMetadata,
-  loadTogetherKey,
+  loadProviderKey,
   PinRequiredError,
-  saveTogetherKey,
+  saveProviderKey,
+  updateEncryptionMode,
 } from '../storage/togetherKeyStorage';
-import { ApiError, validateTogetherKey } from '../utils/api';
+import { ApiError, fetchProviderList, validateProviderKey } from '../utils/api';
+import type { ProviderSummary } from '../types/image';
+import { isProviderEnabled, setProviderEnabled } from '../storage/providerPreferences';
 
 interface ImageGenerationSettingsProps {
   isOpen: boolean;
@@ -17,377 +20,410 @@ interface ImageGenerationSettingsProps {
 
 type Feedback = { type: 'success' | 'error'; message: string } | null;
 
+interface ProviderFormState {
+  keyValue: string;
+  encrypt: boolean;
+  needsPin: boolean;
+  unlockPin: string;
+  pinForUnlock: string;
+  pinForSave: string;
+  pinConfirm: string;
+  feedback: Feedback;
+  isBusy: boolean;
+  hasKey: boolean;
+  showKey: boolean;
+  activated: boolean;
+}
+
+const defaultFormState = (): ProviderFormState => ({
+  keyValue: '',
+  encrypt: false,
+  needsPin: false,
+  unlockPin: '',
+  pinForUnlock: '',
+  pinForSave: '',
+  pinConfirm: '',
+  feedback: null,
+  isBusy: false,
+  hasKey: false,
+  showKey: false,
+  activated: true,
+});
+
 const ImageGenerationSettings: React.FC<ImageGenerationSettingsProps> = ({ isOpen, onKeyChange }) => {
-  const [keyValue, setKeyValue] = useState('');
-  const [encrypt, setEncrypt] = useState(false);
-  const [needsPin, setNeedsPin] = useState(false);
-  const [unlockPin, setUnlockPin] = useState('');
-  const [pinForUnlock, setPinForUnlock] = useState('');
-  const [pinForSave, setPinForSave] = useState('');
-  const [pinConfirm, setPinConfirm] = useState('');
-  const [feedback, setFeedback] = useState<Feedback>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const [hasKey, setHasKey] = useState(false);
+  const [providers, setProviders] = useState<ProviderSummary[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('together');
+  const [forms, setForms] = useState<Record<string, ProviderFormState>>({});
+
+  const activeForm = useMemo(() => forms[activeProviderId] ?? defaultFormState(), [forms, activeProviderId]);
 
   useEffect(() => {
     if (!isOpen) {
-      setKeyValue('');
-      setUnlockPin('');
-      setPinForUnlock('');
-      setPinForSave('');
-      setPinConfirm('');
-      setFeedback(null);
-      setNeedsPin(false);
       return;
     }
-
     let cancelled = false;
     (async () => {
-      setIsBusy(true);
       try {
-        const metadata = await loadMetadata();
+        const response = await fetchProviderList();
         if (cancelled) {
           return;
         }
-        setEncrypt(metadata.encrypted);
-        setHasKey(metadata.hasKey);
-        if (!metadata.hasKey) {
-          setKeyValue('');
-          setNeedsPin(false);
-          return;
+        const list = response.providers ?? [];
+        setProviders(list);
+        if (!list.some(provider => provider.id === activeProviderId)) {
+          setActiveProviderId(list[0]?.id ?? 'together');
         }
-        if (metadata.encrypted) {
-          setNeedsPin(true);
-          setKeyValue('');
-          setFeedback({ type: 'error', message: 'Ключ зашифрован. Введите PIN, чтобы показать значение.' });
-          return;
+        const nextForms: Record<string, ProviderFormState> = {};
+        for (const provider of list) {
+          try {
+            const metadata = await loadMetadata(provider.id);
+            const state = defaultFormState();
+            state.encrypt = metadata.encrypted;
+            state.needsPin = metadata.encrypted;
+            state.hasKey = metadata.hasKey;
+            state.activated = isProviderEnabled(provider.id);
+            if (metadata.hasKey && !metadata.encrypted) {
+              try {
+                const value = await loadProviderKey(provider.id);
+                state.keyValue = value.key;
+                state.showKey = true;
+              } catch (error) {
+                console.warn('Не удалось загрузить ключ провайдера', provider.id, error);
+              }
+            }
+            nextForms[provider.id] = state;
+          } catch {
+            const state = defaultFormState();
+            state.activated = isProviderEnabled(provider.id);
+            nextForms[provider.id] = state;
+          }
         }
-        const value = await loadTogetherKey();
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setForms(nextForms);
         }
-        setKeyValue(value.key);
-        setNeedsPin(false);
-        setFeedback(null);
       } catch (error) {
-        if (!cancelled) {
-          const message = error instanceof Error ? error.message : 'Не удалось загрузить ключ';
-          setFeedback({ type: 'error', message });
-        }
-      } finally {
-        if (!cancelled) {
-          setIsBusy(false);
-        }
+        console.error('Не удалось загрузить список провайдеров', error);
       }
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, activeProviderId]);
+
+  const updateForm = (providerId: string, patch: Partial<ProviderFormState>) => {
+    setForms(prev => ({
+      ...prev,
+      [providerId]: {
+        ...(prev[providerId] ?? defaultFormState()),
+        ...patch,
+      },
+    }));
+  };
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const providersToRender = providers.length > 0 ? providers : [{ id: 'together', label: 'Together AI', enabled: true, recommended_models: [] }];
+  const activeProviderLabel = providersToRender.find(provider => provider.id === activeProviderId)?.label ?? activeProviderId;
 
   const handleUnlock = async () => {
-    if (!pinForUnlock.trim()) {
-      setFeedback({ type: 'error', message: 'Введите PIN для расшифровки' });
+    const form = forms[activeProviderId] ?? defaultFormState();
+    if (!form.pinForUnlock.trim()) {
+      updateForm(activeProviderId, { feedback: { type: 'error', message: 'Введите PIN для расшифровки' } });
       return;
     }
-    setIsBusy(true);
-    setFeedback(null);
+    updateForm(activeProviderId, { isBusy: true, feedback: null });
     try {
-      const value = await loadTogetherKey(pinForUnlock.trim());
-      setKeyValue(value.key);
-      setNeedsPin(false);
-      setUnlockPin(pinForUnlock.trim());
-      setPinForUnlock('');
-      setFeedback({ type: 'success', message: 'Ключ расшифрован и отображён' });
+      const value = await loadProviderKey(activeProviderId, form.pinForUnlock.trim());
+      updateForm(activeProviderId, {
+        keyValue: value.key,
+        needsPin: false,
+        unlockPin: form.pinForUnlock.trim(),
+        pinForUnlock: '',
+        feedback: { type: 'success', message: 'Ключ расшифрован и отображён' },
+        showKey: true,
+      });
     } catch (error) {
       if (error instanceof InvalidPinError) {
-        setFeedback({ type: 'error', message: 'Неверный PIN. Попробуйте снова.' });
+        updateForm(activeProviderId, { feedback: { type: 'error', message: 'Неверный PIN. Попробуйте снова.' } });
       } else {
         const message = error instanceof Error ? error.message : 'Не удалось расшифровать ключ';
-        setFeedback({ type: 'error', message });
+        updateForm(activeProviderId, { feedback: { type: 'error', message } });
       }
     } finally {
-      setIsBusy(false);
+      updateForm(activeProviderId, { isBusy: false });
     }
   };
 
-  const validatePinConfirmation = (): string | null => {
-    if (!encrypt) {
+  const validatePinConfirmation = (form: ProviderFormState): string | null => {
+    if (!form.encrypt) {
       return null;
     }
-    if (pinForSave) {
-      if (pinForSave.length < 4) {
+    if (form.pinForSave) {
+      if (form.pinForSave.length < 4) {
         return 'PIN должен содержать минимум 4 символа';
       }
-      if (pinForSave !== pinConfirm) {
+      if (form.pinForSave !== form.pinConfirm) {
         return 'PIN и подтверждение не совпадают';
       }
     }
-    if (!pinForSave && !unlockPin) {
+    if (!form.pinForSave && !form.unlockPin) {
       return 'Введите PIN для шифрования или расшифруйте ключ';
     }
     return null;
   };
 
   const handleSave = async () => {
-    if (!keyValue.trim()) {
-      setFeedback({ type: 'error', message: 'Введите Together API Key перед сохранением' });
+    const form = forms[activeProviderId] ?? defaultFormState();
+    if (!form.keyValue.trim()) {
+      updateForm(activeProviderId, { feedback: { type: 'error', message: 'Введите API ключ перед сохранением' } });
       return;
     }
-
-    const pinError = validatePinConfirmation();
+    const pinError = validatePinConfirmation(form);
     if (pinError) {
-      setFeedback({ type: 'error', message: pinError });
+      updateForm(activeProviderId, { feedback: { type: 'error', message: pinError } });
       return;
     }
-
-    setIsBusy(true);
-    setFeedback(null);
+    updateForm(activeProviderId, { isBusy: true, feedback: null });
     try {
-      if (encrypt) {
-        const effectivePin = pinForSave || unlockPin;
-        await saveTogetherKey(keyValue.trim(), { encrypt: true, pin: effectivePin });
-        setUnlockPin(effectivePin);
-        setFeedback({ type: 'success', message: 'Ключ сохранён и зашифрован в IndexedDB' });
-        setNeedsPin(false);
+      if (form.encrypt) {
+        const effectivePin = form.pinForSave || form.unlockPin;
+        await saveProviderKey(activeProviderId, form.keyValue.trim(), { encrypt: true, pin: effectivePin });
+        updateForm(activeProviderId, {
+          unlockPin: effectivePin,
+          needsPin: true,
+          feedback: { type: 'success', message: 'Ключ сохранён и зашифрован' },
+          hasKey: true,
+          pinForSave: '',
+          pinConfirm: '',
+        });
       } else {
-        await saveTogetherKey(keyValue.trim(), { encrypt: false });
-        setUnlockPin('');
-        setNeedsPin(false);
-        setFeedback({ type: 'success', message: 'Ключ сохранён в IndexedDB' });
+        await saveProviderKey(activeProviderId, form.keyValue.trim(), { encrypt: false });
+        updateForm(activeProviderId, {
+          unlockPin: '',
+          needsPin: false,
+          feedback: { type: 'success', message: 'Ключ сохранён в IndexedDB' },
+          hasKey: true,
+          pinForSave: '',
+          pinConfirm: '',
+        });
       }
-      setPinForSave('');
-      setPinConfirm('');
-      setHasKey(true);
       if (onKeyChange) {
         onKeyChange();
       }
     } catch (error) {
       if (error instanceof PinRequiredError) {
-        setFeedback({ type: 'error', message: 'Для шифрования требуется PIN' });
+        updateForm(activeProviderId, { feedback: { type: 'error', message: 'Для шифрования требуется PIN' } });
       } else {
         const message = error instanceof Error ? error.message : 'Не удалось сохранить ключ';
-        setFeedback({ type: 'error', message });
+        updateForm(activeProviderId, { feedback: { type: 'error', message } });
       }
     } finally {
-      setIsBusy(false);
+      updateForm(activeProviderId, { isBusy: false });
     }
   };
 
   const handleValidate = async () => {
-    if (!keyValue.trim()) {
-      setFeedback({ type: 'error', message: 'Сначала сохраните Together API Key' });
+    const form = forms[activeProviderId] ?? defaultFormState();
+    if (!form.hasKey) {
+      updateForm(activeProviderId, { feedback: { type: 'error', message: 'Сначала сохраните API ключ' } });
       return;
     }
-    setIsBusy(true);
-    setFeedback(null);
+    updateForm(activeProviderId, { isBusy: true, feedback: null });
     try {
-      await validateTogetherKey(keyValue.trim());
-      setFeedback({ type: 'success', message: 'Ключ успешно прошёл проверку' });
+      const value = form.encrypt ? await loadProviderKey(activeProviderId, form.unlockPin || undefined) : await loadProviderKey(activeProviderId);
+      await validateProviderKey(activeProviderId, value.key);
+      updateForm(activeProviderId, { feedback: { type: 'success', message: 'Ключ успешно прошёл проверку' } });
     } catch (error) {
       if (error instanceof ApiError) {
-        setFeedback({ type: 'error', message: error.message });
+        updateForm(activeProviderId, { feedback: { type: 'error', message: error.message } });
+      } else if (error instanceof PinRequiredError) {
+        updateForm(activeProviderId, { feedback: { type: 'error', message: 'Укажите PIN для проверки' } });
+      } else if (error instanceof Error) {
+        updateForm(activeProviderId, { feedback: { type: 'error', message: error.message } });
       } else {
-        const message = error instanceof Error ? error.message : 'Проверка не удалась';
-        setFeedback({ type: 'error', message });
+        updateForm(activeProviderId, { feedback: { type: 'error', message: 'Проверка не удалась' } });
       }
     } finally {
-      setIsBusy(false);
+      updateForm(activeProviderId, { isBusy: false });
     }
   };
 
   const handleReset = async () => {
-    if (!hasKey) {
-      setFeedback({ type: 'error', message: 'Ключ ещё не сохранён' });
+    const form = forms[activeProviderId] ?? defaultFormState();
+    if (!form.hasKey) {
+      updateForm(activeProviderId, { feedback: { type: 'error', message: 'Ключ ещё не сохранён' } });
       return;
     }
-    const confirmed = window.confirm('Удалить Together API Key из IndexedDB?');
+    const confirmed = window.confirm(`Удалить API ключ для провайдера ${activeProviderLabel}?`);
     if (!confirmed) {
       return;
     }
-    setIsBusy(true);
-    setFeedback(null);
+    updateForm(activeProviderId, { isBusy: true, feedback: null });
     try {
-      await deleteTogetherKey();
-      setKeyValue('');
-      setUnlockPin('');
-      setPinForSave('');
-      setPinConfirm('');
-      setNeedsPin(false);
-      setHasKey(false);
-      setFeedback({ type: 'success', message: 'Ключ удалён. Генерация заблокирована до повторного ввода.' });
+      await deleteProviderKey(activeProviderId);
+      updateForm(activeProviderId, defaultFormState());
       if (onKeyChange) {
         onKeyChange();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось удалить ключ';
-      setFeedback({ type: 'error', message });
+      updateForm(activeProviderId, { feedback: { type: 'error', message } });
     } finally {
-      setIsBusy(false);
+      updateForm(activeProviderId, { isBusy: false });
     }
   };
 
-  const handleCopy = async () => {
-    if (!keyValue) {
-      setFeedback({ type: 'error', message: 'Нет ключа для копирования' });
+  const toggleEncryption = async (encrypt: boolean) => {
+    const form = forms[activeProviderId] ?? defaultFormState();
+    updateForm(activeProviderId, { encrypt, feedback: null });
+    if (!form.hasKey) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(keyValue);
-      setFeedback({ type: 'success', message: 'Ключ скопирован в буфер обмена' });
+      await updateEncryptionMode(activeProviderId, encrypt, form.unlockPin || undefined);
+      updateForm(activeProviderId, { needsPin: encrypt, feedback: { type: 'success', message: 'Режим шифрования обновлён' } });
     } catch (error) {
-      setFeedback({ type: 'error', message: 'Не удалось скопировать ключ' });
+      if (error instanceof PinRequiredError) {
+        updateForm(activeProviderId, { feedback: { type: 'error', message: 'Для включения шифрования нужен PIN' } });
+      } else if (error instanceof InvalidPinError) {
+        updateForm(activeProviderId, { feedback: { type: 'error', message: 'Неверный PIN. Расшифруйте ключ заново.' } });
+      } else {
+        const message = error instanceof Error ? error.message : 'Не удалось изменить режим шифрования';
+        updateForm(activeProviderId, { feedback: { type: 'error', message } });
+      }
     }
   };
 
-  const feedbackClass = useMemo(() => {
-    if (!feedback) {
-      return '';
+  const toggleActivation = (enabled: boolean) => {
+    setProviderEnabled(activeProviderId, enabled);
+    updateForm(activeProviderId, { activated: enabled });
+    if (onKeyChange) {
+      onKeyChange();
     }
-    return feedback.type === 'success' ? 'feedback-success' : 'feedback-error';
-  }, [feedback]);
-
-  const disableActions = isBusy || needsPin;
+  };
 
   return (
-    <div className="image-settings">
-      <div className="setting-group">
-        <div className="setting-header">
-          <h4 className="setting-title">Together FLUX Image Generation</h4>
-          <span className="setting-subtitle">BYOK хранится только в вашем браузере</span>
-        </div>
-
-        <label className="setting-label" htmlFor="togetherKey">
-          Together API Key (полностью отображается)
-        </label>
-        <div className="key-input-row">
-          <textarea
-            id="togetherKey"
-            className="settings-textarea key-textarea"
-            value={keyValue}
-            placeholder="tg-..."
-            onChange={(event) => setKeyValue(event.target.value)}
-            spellCheck={false}
-            disabled={isBusy || needsPin}
-            rows={3}
-          />
+    <div className="provider-settings">
+      <div className="provider-tabs">
+        {providersToRender.map(provider => (
           <button
+            key={provider.id}
             type="button"
-            className="settings-button secondary"
-            onClick={handleCopy}
-            disabled={!keyValue || needsPin || isBusy}
+            className={`provider-tab ${provider.id === activeProviderId ? 'active' : ''}`}
+            onClick={() => setActiveProviderId(provider.id)}
           >
-            Скопировать
+            {provider.label}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {needsPin && (
-          <div className="pin-unlock-block">
-            <label className="setting-label" htmlFor="unlockPin">Введите PIN для расшифровки</label>
-            <div className="pin-row">
+      <div className="provider-settings-body">
+          <div className="setting-group">
+            <label className="setting-label">
               <input
-                id="unlockPin"
-                type="password"
+                type="checkbox"
+                checked={activeForm.activated}
+                onChange={(event) => toggleActivation(event.target.checked)}
+              />
+              Активировать провайдера
+            </label>
+            <div className="setting-description">
+              Провайдер будет доступен в /images только когда активирован и сохранён ключ.
+            </div>
+          </div>
+
+          <div className="setting-group">
+            <label className="setting-label">API Key ({activeProviderLabel})</label>
+            <div className="input-with-icon">
+              <input
+                type={activeForm.showKey ? 'text' : 'password'}
+                value={activeForm.keyValue}
+                onChange={(e) => updateForm(activeProviderId, { keyValue: e.target.value })}
+                placeholder="sk-..."
                 className="settings-input"
-                value={pinForUnlock}
-                onChange={(event) => setPinForUnlock(event.target.value)}
-                placeholder="Введите PIN"
-                autoComplete="off"
               />
               <button
                 type="button"
-                className="settings-button"
-                onClick={handleUnlock}
-                disabled={isBusy || !pinForUnlock}
+                className="input-icon-button"
+                onClick={() => updateForm(activeProviderId, { showKey: !activeForm.showKey })}
+                title={activeForm.showKey ? 'Скрыть API ключ' : 'Показать API ключ'}
               >
-                Расшифровать
+                {activeForm.showKey ? <ShieldOff className="icon" /> : <ShieldCheck className="icon" />}
               </button>
             </div>
           </div>
-        )}
 
-        <div className="encryption-toggle">
-          <label className="toggle-label">
-            <input
-              type="checkbox"
-              checked={encrypt}
-              onChange={(event) => {
-                setEncrypt(event.target.checked);
-                setFeedback(null);
-              }}
-              disabled={isBusy}
-            />
-            <span className="flex items-center gap-2">
-              {encrypt ? <ShieldCheck className="icon" /> : <ShieldOff className="icon" />}
-              Encrypt in IndexedDB (PIN-код)
-            </span>
-          </label>
-          <div className="toggle-hint">
-            Изменения режима шифрования применяются после сохранения.
+          <div className="setting-group toggle-row">
+            <label className="setting-label">
+              <input
+                type="checkbox"
+                checked={activeForm.encrypt}
+                onChange={(event) => toggleEncryption(event.target.checked)}
+              />
+              Шифровать в IndexedDB (PIN)
+            </label>
           </div>
-        </div>
 
-        {encrypt && (
-          <div className="pin-save-block">
-            <label className="setting-label" htmlFor="pinForSave">PIN для шифрования</label>
-            <input
-              id="pinForSave"
-              type="password"
-              className="settings-input"
-              value={pinForSave}
-              onChange={(event) => setPinForSave(event.target.value)}
-              placeholder="Введите новый PIN или оставьте пустым, чтобы использовать текущий"
-              autoComplete="off"
-            />
-            <label className="setting-label" htmlFor="pinConfirm">Подтвердите PIN</label>
-            <input
-              id="pinConfirm"
-              type="password"
-              className="settings-input"
-              value={pinConfirm}
-              onChange={(event) => setPinConfirm(event.target.value)}
-              placeholder="Повторите PIN"
-              autoComplete="off"
-            />
+          {activeForm.needsPin && (
+            <div className="setting-group">
+              <label className="setting-label">PIN для расшифровки</label>
+              <div className="pin-row">
+                <input
+                  type="password"
+                  value={activeForm.pinForUnlock}
+                  onChange={(e) => updateForm(activeProviderId, { pinForUnlock: e.target.value })}
+                  placeholder="Введите PIN"
+                  className="settings-input"
+                />
+                <button type="button" className="settings-button secondary" onClick={handleUnlock} disabled={activeForm.isBusy}>
+                  <KeyRound className="icon" /> Расшифровать
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeForm.encrypt && (
+            <div className="setting-group">
+              <label className="setting-label">PIN для сохранения</label>
+              <div className="pin-row">
+                <input
+                  type="password"
+                  value={activeForm.pinForSave}
+                  onChange={(e) => updateForm(activeProviderId, { pinForSave: e.target.value })}
+                  placeholder="PIN"
+                  className="settings-input"
+                />
+                <input
+                  type="password"
+                  value={activeForm.pinConfirm}
+                  onChange={(e) => updateForm(activeProviderId, { pinConfirm: e.target.value })}
+                  placeholder="Подтверждение"
+                  className="settings-input"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="settings-actions">
+            <button type="button" className="settings-button" onClick={handleSave} disabled={activeForm.isBusy}>
+              Сохранить
+            </button>
+            <button type="button" className="settings-button secondary" onClick={handleValidate} disabled={activeForm.isBusy}>
+              Проверить ключ
+            </button>
+            <button type="button" className="settings-button danger" onClick={handleReset} disabled={activeForm.isBusy}>
+              Удалить ключ
+            </button>
           </div>
-        )}
 
-        <div className="settings-actions">
-          <button type="button" className="settings-button" onClick={handleSave} disabled={isBusy}>
-            Сохранить
-          </button>
-          <button
-            type="button"
-            className="settings-button secondary"
-            onClick={handleValidate}
-            disabled={disableActions || !keyValue.trim()}
-          >
-            Проверить ключ
-          </button>
-          <button
-            type="button"
-            className="settings-button danger"
-            onClick={handleReset}
-            disabled={isBusy || !hasKey}
-          >
-            Reset key
-          </button>
-        </div>
-
-        {feedback && (
-          <div className={`feedback ${feedbackClass}`}>
-            {feedback.type === 'success' ? <CheckCircle2 className="icon" /> : <AlertCircle className="icon" />}
-            <span>{feedback.message}</span>
+        {activeForm.feedback && (
+          <div className={`feedback feedback-${activeForm.feedback.type}`}>
+            {activeForm.feedback.type === 'success' ? <CheckCircle2 className="icon" /> : <AlertCircle className="icon" />}
+            <span>{activeForm.feedback.message}</span>
           </div>
         )}
-
-        <div className="storage-hint">
-          <KeyRound className="icon" />
-          <div>
-            Ключ хранится <strong>только</strong> в IndexedDB вашего браузера. Сервер не сохраняет и не логирует его. Удалить можно кнопкой Reset или полной очисткой данных сайта.
-          </div>
-        </div>
       </div>
     </div>
   );
