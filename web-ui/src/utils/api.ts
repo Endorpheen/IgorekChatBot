@@ -1,5 +1,10 @@
 import type { ChatMessage, ChatResponse, ThreadSettings } from '../types/chat';
-import type { ImageJobCreateResponse, ImageJobStatusResponse, ImageModelCapabilities } from '../types/image';
+import type {
+  ImageJobCreateResponse,
+  ImageJobStatusResponse,
+  ProviderListResponse,
+  ProviderModelsResponse,
+} from '../types/image';
 import { buildCsrfHeader } from './csrf';
 import { getImageSessionId } from './session';
 
@@ -288,23 +293,43 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
 };
 
 export const createImageGenerationJob = async (payload: {
+  provider: string;
+  model: string;
   prompt: string;
-  width: number;
-  height: number;
-  steps: number;
-  togetherKey: string;
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfg?: number;
+  seed?: number;
+  mode?: string;
+  extras?: Record<string, unknown> | null;
+  apiKey: string;
 }): Promise<ImageJobCreateResponse> => {
-  const { togetherKey, ...body } = payload;
+  const { apiKey, ...body } = payload;
+  const requestBody: Record<string, unknown> = {
+    provider: body.provider,
+    model: body.model,
+    prompt: body.prompt,
+  };
+  if (typeof body.width === 'number') requestBody.width = body.width;
+  if (typeof body.height === 'number') requestBody.height = body.height;
+  if (typeof body.steps === 'number') requestBody.steps = body.steps;
+  if (typeof body.cfg === 'number') requestBody.cfg = body.cfg;
+  if (typeof body.seed === 'number') requestBody.seed = body.seed;
+  if (typeof body.mode === 'string') requestBody.mode = body.mode;
+  if (body.extras && Object.keys(body.extras).length > 0) {
+    requestBody.extras = body.extras;
+  }
   const response = await fetch(buildApiUrl('/image/generate'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'X-Together-Key': togetherKey,
+      'X-Image-Key': apiKey,
       'X-Client-Session': getImageSessionId(),
       ...buildCsrfHeader(),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -330,15 +355,16 @@ export const fetchImageJobStatus = async (jobId: string): Promise<ImageJobStatus
   return response.json() as Promise<ImageJobStatusResponse>;
 };
 
-export const validateTogetherKey = async (togetherKey: string): Promise<void> => {
+export const validateProviderKey = async (providerId: string, apiKey: string): Promise<void> => {
   const response = await fetch(buildApiUrl('/image/validate'), {
     method: 'POST',
     headers: {
       Accept: 'application/json',
-      'X-Together-Key': togetherKey,
+      'X-Image-Key': apiKey,
       'X-Client-Session': getImageSessionId(),
       ...buildCsrfHeader(),
     },
+    body: JSON.stringify({ provider: providerId }),
   });
 
   if (!response.ok) {
@@ -346,11 +372,32 @@ export const validateTogetherKey = async (togetherKey: string): Promise<void> =>
   }
 };
 
-export const fetchImageCapabilities = async (): Promise<ImageModelCapabilities> => {
-  const response = await fetch(buildApiUrl('/image/capabilities'), {
+export const fetchProviderList = async (): Promise<ProviderListResponse> => {
+  const response = await fetch(buildApiUrl('/image/providers'), {
     method: 'GET',
     headers: {
       Accept: 'application/json',
+    },
+  });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return response.json() as Promise<ProviderListResponse>;
+};
+
+export const fetchProviderModels = async (providerId: string, apiKey: string, options?: { force?: boolean }): Promise<ProviderModelsResponse> => {
+  const url = new URL(buildApiUrl('/image/providers'));
+  url.searchParams.set('provider', providerId);
+  if (options?.force) {
+    url.searchParams.set('force', '1');
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-Image-Key': apiKey,
+      'X-Client-Session': getImageSessionId(),
     },
   });
 
@@ -358,11 +405,7 @@ export const fetchImageCapabilities = async (): Promise<ImageModelCapabilities> 
     await parseErrorResponse(response);
   }
 
-  const data = await response.json() as ImageModelCapabilities;
-  if (!data?.model) {
-    throw new ApiError('Не удалось получить параметры модели', response.status, 'model_unknown');
-  }
-  return data;
+  return response.json() as Promise<ProviderModelsResponse>;
 };
 
 interface UploadImagesParams {

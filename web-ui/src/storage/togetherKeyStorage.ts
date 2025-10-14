@@ -1,9 +1,8 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'togetherKeyDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'keys';
-const PRIMARY_KEY = 'primary';
 const DEFAULT_ITERATIONS = 150_000;
 
 const isBrowser = typeof window !== 'undefined';
@@ -28,6 +27,7 @@ export class InvalidPinError extends Error {
 
 interface StoredKeyRecord {
   id: string;
+  providerId: string;
   encrypted: boolean;
   key: string;
   iv?: string;
@@ -45,7 +45,7 @@ interface TogetherKeyDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<TogetherKeyDB>> | null = null;
-let memoryRecord: StoredKeyRecord | null = null;
+let memoryRecords: Record<string, StoredKeyRecord> = {};
 
 const getDb = async (): Promise<IDBPDatabase<TogetherKeyDB>> => {
   if (!hasIndexedDB) {
@@ -161,46 +161,79 @@ const decryptValue = async (record: StoredKeyRecord, pin: string): Promise<strin
   return textDecoder.decode(decryptedBuffer);
 };
 
-const readRecord = async (): Promise<StoredKeyRecord | null> => {
+const normaliseId = (providerId: string): string => `provider:${providerId}`;
+
+const readRecord = async (providerId: string): Promise<StoredKeyRecord | null> => {
+  const normalised = normaliseId(providerId);
   if (!hasIndexedDB) {
-    return memoryRecord;
+    return memoryRecords[normalised] ?? null;
   }
   const db = await getDb();
-  const record = await db.get(STORE_NAME, PRIMARY_KEY);
+  const record = await db.get(STORE_NAME, normalised);
+  if (!record && providerId === 'together') {
+    const legacy = await db.get(STORE_NAME, 'primary');
+    if (legacy) {
+      legacy.id = normalised;
+      legacy.providerId = 'together';
+      await db.put(STORE_NAME, legacy);
+      await db.delete(STORE_NAME, 'primary');
+      return legacy;
+    }
+  }
   return record ?? null;
 };
 
-const writeRecord = async (record: StoredKeyRecord | null): Promise<void> => {
+const writeRecord = async (providerId: string, record: StoredKeyRecord | null): Promise<void> => {
+  const normalised = normaliseId(providerId);
   if (!hasIndexedDB) {
-    memoryRecord = record;
+    if (record) {
+      memoryRecords[normalised] = record;
+    } else {
+      delete memoryRecords[normalised];
+    }
     return;
   }
   const db = await getDb();
   if (record) {
     await db.put(STORE_NAME, record);
   } else {
-    await db.delete(STORE_NAME, PRIMARY_KEY);
+    await db.delete(STORE_NAME, normalised);
   }
 };
 
-export interface TogetherKeyMetadata {
+export interface ProviderKeyMetadata {
+  providerId: string;
   hasKey: boolean;
   encrypted: boolean;
   updatedAt?: string;
   createdAt?: string;
 }
 
-export interface TogetherKeyValue {
+export interface ProviderKeyValue {
+  providerId: string;
   key: string;
   encrypted: boolean;
 }
 
-export const loadMetadata = async (): Promise<TogetherKeyMetadata> => {
-  const record = await readRecord();
+export const listSavedProviders = async (): Promise<string[]> => {
+  if (!hasIndexedDB) {
+    return Object.keys(memoryRecords).map(key => key.replace(/^provider:/, ''));
+  }
+  const db = await getDb();
+  const keys = await db.getAllKeys(STORE_NAME);
+  return keys
+    .map(key => (typeof key === 'string' ? key : String(key)))
+    .filter(key => key.startsWith('provider:'))
+    .map(key => key.replace('provider:', ''));
+};
+
+export const loadMetadata = async (providerId = 'together'): Promise<ProviderKeyMetadata> => {
+  const record = await readRecord(providerId);
   if (!record) {
-    return { hasKey: false, encrypted: false };
+    return { providerId, hasKey: false, encrypted: false };
   }
   return {
+    providerId,
     hasKey: true,
     encrypted: record.encrypted,
     updatedAt: record.updatedAt,
@@ -208,39 +241,41 @@ export const loadMetadata = async (): Promise<TogetherKeyMetadata> => {
   };
 };
 
-export const loadTogetherKey = async (pin?: string): Promise<TogetherKeyValue> => {
-  const record = await readRecord();
+export const loadProviderKey = async (providerId: string, pin?: string): Promise<ProviderKeyValue> => {
+  const record = await readRecord(providerId);
   if (!record) {
     throw new Error('Ключ не найден');
   }
   if (!record.encrypted) {
-    return { key: record.key, encrypted: false };
+    return { providerId, key: record.key, encrypted: false };
   }
   if (!pin) {
     throw new PinRequiredError();
   }
   try {
     const key = await decryptValue(record, pin);
-    return { key, encrypted: true };
+    return { providerId, key, encrypted: true };
   } catch (error) {
     throw new InvalidPinError();
   }
 };
 
-export const saveTogetherKey = async (key: string, options: { encrypt: boolean; pin?: string }): Promise<void> => {
+export const saveProviderKey = async (providerId: string, key: string, options: { encrypt: boolean; pin?: string }): Promise<void> => {
   const trimmed = key.trim();
   if (!trimmed) {
     throw new Error('Пустой ключ нельзя сохранить');
   }
   const now = new Date().toISOString();
+  const recordId = normaliseId(providerId);
 
   if (options.encrypt) {
     if (!options.pin) {
       throw new PinRequiredError();
     }
     const encrypted = await encryptValue(trimmed, options.pin);
-    await writeRecord({
-      id: PRIMARY_KEY,
+    const record: StoredKeyRecord = {
+      id: recordId,
+      providerId,
       encrypted: true,
       key: encrypted.key,
       iv: encrypted.iv,
@@ -248,21 +283,28 @@ export const saveTogetherKey = async (key: string, options: { encrypt: boolean; 
       iterations: encrypted.iterations,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    await writeRecord(providerId, record);
     return;
   }
 
-  await writeRecord({
-    id: PRIMARY_KEY,
+  const record: StoredKeyRecord = {
+    id: recordId,
+    providerId,
     encrypted: false,
     key: trimmed,
     createdAt: now,
     updatedAt: now,
-  });
+  };
+  await writeRecord(providerId, record);
 };
 
-export const updateEncryptionMode = async (encrypt: boolean, pin?: string): Promise<void> => {
-  const record = await readRecord();
+export const deleteProviderKey = async (providerId: string): Promise<void> => {
+  await writeRecord(providerId, null);
+};
+
+export const updateEncryptionMode = async (providerId: string, encrypt: boolean, pin?: string): Promise<void> => {
+  const record = await readRecord(providerId);
   if (!record) {
     throw new Error('Нет сохранённого ключа');
   }
@@ -271,15 +313,19 @@ export const updateEncryptionMode = async (encrypt: boolean, pin?: string): Prom
     if (!pin) {
       throw new PinRequiredError();
     }
-    const decrypted = record.encrypted ? await loadTogetherKey(pin) : { key: record.key, encrypted: false };
-    await saveTogetherKey(decrypted.key, { encrypt: true, pin });
+    const decrypted = record.encrypted ? await loadProviderKey(providerId, pin) : { key: record.key, encrypted: false, providerId };
+    await saveProviderKey(providerId, decrypted.key, { encrypt: true, pin });
     return;
   }
 
-  const keyValue = record.encrypted ? await loadTogetherKey(pin) : { key: record.key, encrypted: false };
-  await saveTogetherKey(keyValue.key, { encrypt: false });
+  const keyValue = record.encrypted ? await loadProviderKey(providerId, pin) : { key: record.key, encrypted: false, providerId };
+  await saveProviderKey(providerId, keyValue.key, { encrypt: false });
 };
 
-export const deleteTogetherKey = async (): Promise<void> => {
-  await writeRecord(null);
-};
+// Обратная совместимость для существующего кода настройки Together.
+export const loadTogetherKey = (pin?: string) => loadProviderKey('together', pin);
+export const saveTogetherKey = (key: string, options: { encrypt: boolean; pin?: string }) => saveProviderKey('together', key, options);
+export const deleteTogetherKey = () => deleteProviderKey('together');
+
+export type TogetherKeyMetadata = ProviderKeyMetadata;
+export type TogetherKeyValue = ProviderKeyValue;

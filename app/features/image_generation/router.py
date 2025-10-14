@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Literal
+from typing import Any, Dict, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.middlewares.security import _require_csrf_token, verify_client_session
 from app.settings import get_settings
-from image_generation import ImageGenerationError, get_model_capabilities, image_manager
+from image_generation import ImageGenerationError, image_manager
 
 from .adapters import image_error_to_http
 
@@ -19,10 +19,16 @@ settings = get_settings()
 
 
 class ImageGenerateRequest(BaseModel):
+    provider: str
+    model: str
     prompt: str
-    width: int = 1024
-    height: int = 1024
-    steps: int = 4
+    width: Optional[int] = None
+    height: Optional[int] = None
+    steps: Optional[int] = None
+    cfg: Optional[float] = None
+    seed: Optional[int] = None
+    mode: Optional[str] = None
+    extras: Dict[str, Any] | None = Field(default=None)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -36,10 +42,14 @@ class ImageJobStatusResponse(BaseModel):
     job_id: str
     status: Literal["queued", "running", "done", "error"]
     provider: str
+    model: str
     prompt: str
     width: int
     height: int
     steps: int
+    cfg: float | None = None
+    seed: int | None = None
+    mode: str | None = None
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None = None
@@ -52,35 +62,74 @@ class ImageJobStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class ImageCapabilitiesResponse(BaseModel):
-    model: str
-    steps_allowed: list[int]
-    default_steps: int
-    sizes_allowed: list[int]
-    default_size: int
+class ProviderSummary(BaseModel):
+    id: str
+    label: str
+    enabled: bool = True
+    description: str | None = None
+    recommended_models: list[str]
 
 
-def _extract_together_key(request: Request) -> str:
-    together_key = (request.headers.get("X-Together-Key") or "").strip()
-    if not together_key:
-        raise HTTPException(status_code=400, detail={"code": "missing_key", "message": "Заголовок X-Together-Key обязателен"})
-    return together_key
+class ProviderModelSpecResponse(BaseModel):
+    id: str
+    display_name: str
+    recommended: bool
+    capabilities: Dict[str, Any]
+    limits: Dict[str, Any]
+    defaults: Dict[str, Any]
+    metadata: Dict[str, Any] | None = None
+
+
+class ProviderModelsResponse(BaseModel):
+    provider: str
+    models: list[ProviderModelSpecResponse]
+
+
+class ProviderListResponse(BaseModel):
+    providers: list[ProviderSummary]
+
+
+class ImageKeyValidationRequest(BaseModel):
+    provider: str
+
+
+def _extract_image_key(request: Request) -> str:
+    image_key = (request.headers.get("X-Image-Key") or "").strip()
+    if not image_key:
+        raise HTTPException(status_code=400, detail={"code": "missing_key", "message": "Заголовок X-Image-Key обязателен"})
+    return image_key
 
 
 @router.post("/image/generate", response_model=ImageJobCreateResponse)
 async def create_image_job(request: Request, payload: ImageGenerateRequest) -> ImageJobCreateResponse:
     _require_csrf_token(request)
     session_id = verify_client_session(request)
-    together_key = _extract_together_key(request)
+    api_key = _extract_image_key(request)
+
+    params: Dict[str, Any] = {}
+    if payload.width is not None:
+        params["width"] = payload.width
+    if payload.height is not None:
+        params["height"] = payload.height
+    if payload.steps is not None:
+        params["steps"] = payload.steps
+    if payload.cfg is not None:
+        params["cfg"] = payload.cfg
+    if payload.seed is not None:
+        params["seed"] = payload.seed
+    if payload.mode is not None:
+        params["mode"] = payload.mode
+    if payload.extras:
+        params.update(payload.extras)
 
     try:
         job_id = await image_manager.enqueue_job(
+            provider_id=payload.provider,
+            model_id=payload.model,
             prompt=payload.prompt,
-            width=payload.width,
-            height=payload.height,
-            steps=payload.steps,
+            params=params,
             session_id=session_id,
-            together_key=together_key,
+            api_key=api_key,
         )
     except ImageGenerationError as exc:
         raise image_error_to_http(exc)
@@ -110,10 +159,14 @@ async def get_image_job(job_id: str, request: Request) -> ImageJobStatusResponse
         job_id=job_id,
         status=status.status,
         provider=status.provider,
+        model=status.model,
         prompt=status.prompt,
         width=status.width,
         height=status.height,
         steps=status.steps,
+        cfg=status.cfg,
+        seed=status.seed,
+        mode=status.mode,
         created_at=status.created_at,
         updated_at=status.updated_at,
         started_at=status.started_at,
@@ -153,16 +206,18 @@ async def download_image_job_result(job_id: str, request: Request) -> FileRespon
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Файл результата не найден"})
 
-    return FileResponse(str(file_path), media_type="image/webp")
+    provider_slug = status.provider.replace("/", "-")
+    filename = f"{provider_slug}-{job_id}.webp"
+    return FileResponse(str(file_path), media_type="image/webp", filename=filename)
 
 
 @router.post("/image/validate")
-async def validate_together_key(request: Request) -> Dict[str, str]:
+async def validate_image_key(request: Request, payload: ImageKeyValidationRequest) -> Dict[str, str]:
     _require_csrf_token(request)
-    together_key = _extract_together_key(request)
+    api_key = _extract_image_key(request)
 
     try:
-        await image_manager.validate_key(together_key)
+        await image_manager.validate_key(payload.provider, api_key)
     except ImageGenerationError as exc:
         raise image_error_to_http(exc)
 
@@ -193,11 +248,26 @@ async def download_image_file(job_id: str):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Файл результата не найден"})
 
-    filename = f"together-flux-{job_id}.webp"
+    provider_slug = status.provider.replace("/", "-")
+    filename = f"{provider_slug}-{job_id}.webp"
     return FileResponse(str(file_path), media_type="image/webp", filename=filename)
 
 
-@router.get("/image/capabilities", response_model=ImageCapabilitiesResponse)
-async def get_image_capabilities() -> ImageCapabilitiesResponse:
-    data = get_model_capabilities()
-    return ImageCapabilitiesResponse(**data)
+@router.get("/image/providers", response_model=ProviderModelsResponse | ProviderListResponse)
+async def get_image_providers(
+    request: Request,
+    provider: str | None = Query(default=None),
+    force: int | None = Query(default=None),
+) -> ProviderModelsResponse | ProviderListResponse:
+    if not provider:
+        providers = image_manager.list_providers()
+        return ProviderListResponse(providers=[ProviderSummary(**item) for item in providers])
+
+    api_key = _extract_image_key(request)
+    try:
+        models = await image_manager.get_provider_models(provider, api_key, force=bool(force))
+    except ImageGenerationError as exc:
+        raise image_error_to_http(exc)
+
+    response_models = [ProviderModelSpecResponse(**model) for model in models]
+    return ProviderModelsResponse(provider=provider, models=response_models)
