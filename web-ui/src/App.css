@@ -984,6 +984,12 @@
   flex-shrink: 0;
 }
 
+.footer-secondary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .desktop-widget .convai-widget elevenlabs-convai {
   position: relative !important;
 }
@@ -1893,12 +1899,5 @@
 .github-link-button:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
-}
-
-.fixed-widget-container {
-  position: fixed;
-  bottom: 1rem;
-  right: 1rem;
-  z-index: 1000;
 }
 

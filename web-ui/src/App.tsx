@@ -20,7 +20,6 @@ import Footer from './components/Footer';
 import SettingsPanel from './components/SettingsPanel';
 import ImageGenerationPanel from './components/ImageGenerationPanel';
 import McpPanel from './components/McpPanel';
-import ElevenLabsConvaiWidget from './components/ElevenLabsConvaiWidget';
 
 interface PendingAttachment {
   id: string;
@@ -447,9 +446,6 @@ const AppContent = () => {
             </>
           )}
         </div>
-      </div>
-      <div className="fixed-widget-container">
-        <ElevenLabsConvaiWidget />
       </div>
       <SettingsPanel
         isSettingsOpen={isSettingsOpen}
