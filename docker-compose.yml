@@ -10,6 +10,9 @@ services:
       - ./uploads:/app/uploads
     networks:
       - mcpnet
+    depends_on:
+      mcp_obsidian:
+        condition: service_healthy
     environment:
       - AUTH_TOKEN=${AUTH_TOKEN}
       - MCP_URL=${MCP_URL}
@@ -19,9 +22,33 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_CSE_ID=${GOOGLE_CSE_ID}
       - VITE_AGENT_API_BASE=http://chatbot:3000
+      - MCP_VAULT_URL=${MCP_VAULT_URL}
     # Порты наружу не нужны, если через Caddy
     # ports:
     #   - "3000:3000"
+  
+  mcp_obsidian:
+    build:
+      context: ./mcp_servers/obsidian
+      dockerfile: Dockerfile.node
+    container_name: mcp_obsidian
+    restart: unless-stopped
+    networks:
+      - mcpnet
+    environment:
+      - PORT=3333
+      - VAULT_PATH=/vault
+      - LOG_FILE=/app/logs/logs.json
+    volumes:
+      - /root/vault:/vault:ro
+      - /root/mcp-logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -X POST http://localhost:3333/search -H 'Content-Type: application/json' -d '{}' | grep -q 'results'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   sandbox_executor:
     build:
       context: ./sandbox_executor

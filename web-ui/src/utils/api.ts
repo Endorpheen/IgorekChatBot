@@ -544,3 +544,40 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
     return `Ошибка: ${error}`;
   }
 };
+
+export const mcpSearch = async (payload: { query: string; [key: string]: any }): Promise<any> => {
+  const response = await fetch(buildApiUrl('/api/mcp/search'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...buildCsrfHeader(),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json();
+};
+
+export const mcpFetch = async (payload: { id: string; [key: string]: any }): Promise<any> => {
+  const response = await fetch(buildApiUrl('/api/mcp/fetch'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...buildCsrfHeader(),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json();
+};
+
