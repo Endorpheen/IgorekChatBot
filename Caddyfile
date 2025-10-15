@@ -20,7 +20,7 @@ end0databox.duckdns.org {
 
     # --- всё остальное в MCP-сервер ---
     handle {
-        reverse_proxy mcp-vault-node:3000
+        reverse_proxy mcp_server:3000
     }
 
     header {
@@ -39,6 +39,16 @@ igorek.end0databox.duckdns.org {
 
 # === Новый основной домен .RU ===
 igorekchatbot.ru, www.igorekchatbot.ru {
+    @sse path /sse*
+    handle @sse {
+        reverse_proxy mcp_server:3000
+    }
+
+    @mcpRun path /run
+    handle @mcpRun {
+        reverse_proxy mcp_server:3000
+    }
+
     reverse_proxy chatbot:3000
 
     header {

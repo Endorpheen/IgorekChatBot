@@ -59,19 +59,23 @@ const McpSettings: React.FC<McpSettingsProps> = ({ threadId, isOpen, onServersUp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadServers = async () => {
+  const loadServers = async (notifyParent = true): Promise<McpServer[]> => {
     if (!isOpen) {
-      return;
+      return servers;
     }
     setIsLoadingServers(true);
     try {
       const data = await fetchMcpServers();
       setServers(data);
       setError(null);
-      onServersUpdated?.(data);
+      if (notifyParent) {
+        onServersUpdated?.(data);
+      }
+      return data;
     } catch (err) {
       console.error('Не удалось загрузить MCP сервера', err);
       setError(err instanceof Error ? err.message : 'Ошибка загрузки серверов');
+      return servers;
     } finally {
       setIsLoadingServers(false);
     }
@@ -166,12 +170,12 @@ const McpSettings: React.FC<McpSettingsProps> = ({ threadId, isOpen, onServersUp
     try {
       const payload = { ...editingServer };
       const saved = await saveMcpServer(payload);
-      await loadServers();
+      const fetched = await loadServers(false);
+      const filtered = fetched.filter(server => server.id !== saved.id);
+      const updated = [...filtered, saved];
+      setServers(updated);
+      onServersUpdated?.(updated);
       setEditingServer(null);
-      setServers(prev => {
-        const filtered = prev.filter(server => server.id !== saved.id);
-        return [...filtered, saved];
-      });
       setError(null);
     } catch (err) {
       console.error('Ошибка сохранения сервера', err);
