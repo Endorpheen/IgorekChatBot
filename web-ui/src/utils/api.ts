@@ -546,11 +546,17 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
 };
 
 export const mcpSearch = async (payload: { query: string; [key: string]: any }): Promise<any> => {
+  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
+  if (!token) {
+    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
+  }
+
   const response = await fetch(buildApiUrl('/api/mcp/search'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      'Authorization': `Bearer ${token}`,
       ...buildCsrfHeader(),
     },
     body: JSON.stringify(payload),
@@ -564,11 +570,17 @@ export const mcpSearch = async (payload: { query: string; [key: string]: any }):
 };
 
 export const mcpFetch = async (payload: { id: string; [key: string]: any }): Promise<any> => {
+  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
+  if (!token) {
+    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
+  }
+
   const response = await fetch(buildApiUrl('/api/mcp/fetch'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      'Authorization': `Bearer ${token}`,
       ...buildCsrfHeader(),
     },
     body: JSON.stringify(payload),

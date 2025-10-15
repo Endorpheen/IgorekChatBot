@@ -8,6 +8,7 @@ logger = get_logger()
 class ObsidianClient:
     def __init__(self):
         self.base_url = os.getenv("MCP_VAULT_URL")
+        self.secret = os.getenv("MCP_SECRET")
         if not self.base_url:
             logger.error("MCP_VAULT_URL environment variable not set.")
             raise ValueError("MCP_VAULT_URL environment variable not set. Please configure it in your .env file.")
@@ -15,6 +16,9 @@ class ObsidianClient:
     def _request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}/{endpoint}"
         headers = {"Content-Type": "application/json"}
+        if self.secret:
+            headers["Authorization"] = f"Bearer {self.secret}"
+
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()

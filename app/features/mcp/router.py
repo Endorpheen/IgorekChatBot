@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Body, Request, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from typing import Dict, Any
 from app.features.mcp.service import mcp_service
+from app.security import get_current_user
 import requests
 
-router = APIRouter(prefix="/api/mcp", tags=["MCP"])
+router = APIRouter(
+    prefix="/api/mcp", 
+    tags=["MCP"], 
+    dependencies=[Depends(get_current_user)]
+)
 
 async def handle_mcp_request(method, payload):
     try:
