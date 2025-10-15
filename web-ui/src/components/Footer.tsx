@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, Github } from 'lucide-react';
 import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
 
 interface FooterProps {
@@ -22,12 +22,13 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
           </div>
         </div>
         <a
-          className="github-link-button"
+          className="settings-button"
           href="https://github.com/Endorpheen/IgorekChatBot"
           target="_blank"
           rel="noreferrer noopener"
         >
-          GitHub
+          <Github className="icon" />
+          <span>GitHub</span>
         </a>
         <button
           type="button"
