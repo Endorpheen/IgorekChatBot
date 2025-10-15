@@ -20,6 +20,7 @@ import Footer from './components/Footer';
 import SettingsPanel from './components/SettingsPanel';
 import ImageGenerationPanel from './components/ImageGenerationPanel';
 import McpPanel from './components/McpPanel';
+import ElevenLabsConvaiWidget from './components/ElevenLabsConvaiWidget';
 
 interface PendingAttachment {
   id: string;
@@ -365,10 +366,12 @@ const AppContent = () => {
                   </button>
                 </div>
               </div>
-              <ImageGenerationPanel
-                onRequireKeySetup={() => setIsSettingsOpen(true)}
-                refreshKeySignal={keyRefreshToken}
-              />
+              <div className="page-content">
+                <ImageGenerationPanel
+                  onRequireKeySetup={() => setIsSettingsOpen(true)}
+                  refreshKeySignal={keyRefreshToken}
+                />
+              </div>
               <Footer openSettings={() => setIsSettingsOpen(true)} />
             </>
           ) : isMcpRoute ? (
@@ -382,7 +385,9 @@ const AppContent = () => {
                   ← В чат
                 </button>
               </div>
-              <McpPanel />
+              <div className="page-content">
+                <McpPanel />
+              </div>
               <Footer openSettings={() => setIsSettingsOpen(true)} />
             </>
           ) : (
@@ -442,6 +447,9 @@ const AppContent = () => {
             </>
           )}
         </div>
+      </div>
+      <div className="fixed-widget-container">
+        <ElevenLabsConvaiWidget />
       </div>
       <SettingsPanel
         isSettingsOpen={isSettingsOpen}

@@ -146,6 +146,10 @@
   margin-bottom: 1rem;
 }
 
+.page-content {
+  flex-grow: 1;
+}
+
 
 
 .threads-panel {
@@ -1890,3 +1894,11 @@
   outline: none;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
 }
+
+.fixed-widget-container {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 1000;
+}
+
