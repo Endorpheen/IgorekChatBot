@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     upload_max_total_mb: int = 1024
     upload_clean_interval_seconds: int = 3600
 
+    mcp_feature_enabled: bool = False
+    mcp_secret_key: Optional[str] = None
+    mcp_stdio_enable: bool = False
+    mcp_allow_internal: bool = False
+    mcp_default_timeout_s: int = 30
+    mcp_max_output_kb: int = 256
+    mcp_max_calls_per_minute_per_thread: int = 10
+    mcp_db_path: Path = Field(default=Path("data/mcp.sqlite"))
+    mcp_log_path: Path = Field(default=Path("logs/mcp.log"))
+    mcp_concurrency_limit: int = 3
+
     google_api_key: Optional[str] = None
     google_cse_id: Optional[str] = None
     google_search_endpoint: str = "https://www.googleapis.com/customsearch/v1"

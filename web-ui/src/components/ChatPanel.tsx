@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import { Command, Mic, Send, Upload, MoreVertical, Check, X } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import type { ChatMessage } from '../types/chat';
+import type { McpTool } from '../types/mcp';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -21,6 +22,9 @@ interface ChatPanelProps {
   COMMON_COMMANDS: string[];
   pendingAttachments: Array<{ id: string; previewUrl: string; name: string }>;
   removeAttachment: (id: string) => void;
+  mcpOptions?: Array<{ serverId: string; serverName: string; tools: McpTool[] }>;
+  onRunMcpTool?: (serverId: string, tool: McpTool, args: Record<string, unknown>) => Promise<void>;
+  isMcpBusy?: boolean;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -40,9 +44,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   COMMON_COMMANDS,
   pendingAttachments,
   removeAttachment,
+  mcpOptions,
+  onRunMcpTool,
+  isMcpBusy,
 }) => {
   const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [selectedToolKey, setSelectedToolKey] = useState<string>('');
 
   useEffect(() => {
     const handleClickOutside = () => setOpenMessageMenu(null);
@@ -94,6 +102,118 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       console.error('TTS error', error);
     }
   };
+
+  const flatMcpTools = useMemo(() => {
+    if (!mcpOptions) {
+      return [] as Array<{ option: { serverId: string; serverName: string; tools: McpTool[] }; tool: McpTool; key: string }>;
+    }
+    return mcpOptions.flatMap(option => option.tools.map(tool => ({
+      option,
+      tool,
+      key: `${option.serverId}::${tool.name}`,
+    })));
+  }, [mcpOptions]);
+
+  useEffect(() => {
+    if (selectedToolKey && !flatMcpTools.some(item => item.key === selectedToolKey)) {
+      setSelectedToolKey('');
+    }
+    if (!selectedToolKey && flatMcpTools.length === 1) {
+      setSelectedToolKey(flatMcpTools[0].key);
+    }
+  }, [flatMcpTools, selectedToolKey]);
+
+  const collectArguments = useCallback(async (tool: McpTool) => {
+    const schema = tool.inputSchema;
+    if (!schema || typeof schema !== 'object') {
+      return {};
+    }
+
+    const properties = (schema as Record<string, unknown>).properties as Record<string, any> | undefined;
+    if (!properties || typeof properties !== 'object') {
+      return {};
+    }
+    const required = new Set<string>(Array.isArray((schema as Record<string, any>).required) ? (schema as Record<string, any>).required : []);
+    const args: Record<string, unknown> = {};
+
+    for (const [name, property] of Object.entries(properties)) {
+      const prop = property ?? {};
+      const type = typeof prop === 'object' && prop !== null && typeof prop.type === 'string' ? prop.type : 'string';
+      const enumValues = Array.isArray((prop as Record<string, unknown>).enum) ? (prop as Record<string, unknown>).enum as unknown[] : undefined;
+      const description = typeof prop?.description === 'string' ? prop.description : '';
+      const promptLabel = [name, description].filter(Boolean).join(' — ');
+      const defaultValue = typeof prop?.default !== 'undefined' ? String(prop.default) : '';
+
+      const promptText = enumValues
+        ? `${promptLabel}\nВарианты: ${enumValues.map(String).join(', ')}`
+        : promptLabel;
+
+      const userInput = window.prompt(promptText || `Введите значение ${name}`, defaultValue);
+
+      if (userInput === null) {
+        if (required.has(name)) {
+          alert(`Поле ${name} обязательно для заполнения.`);
+          return null;
+        }
+        continue;
+      }
+
+      const trimmed = userInput.trim();
+      if (!trimmed) {
+        if (required.has(name)) {
+          alert(`Поле ${name} обязательно для заполнения.`);
+          return null;
+        }
+        continue;
+      }
+
+      if (enumValues && !enumValues.map(String).includes(trimmed)) {
+        alert(`Недопустимое значение для ${name}`);
+        return null;
+      }
+
+      switch (type) {
+        case 'integer':
+        case 'number': {
+          const numeric = Number(trimmed);
+          if (Number.isNaN(numeric)) {
+            alert(`Ожидалось числовое значение для ${name}`);
+            return null;
+          }
+          args[name] = numeric;
+          break;
+        }
+        case 'boolean':
+          args[name] = ['true', '1', 'yes', 'да'].includes(trimmed.toLowerCase());
+          break;
+        default:
+          args[name] = trimmed;
+          break;
+      }
+    }
+
+    return args;
+  }, []);
+
+  const handleRunSelectedTool = useCallback(async () => {
+    if (!onRunMcpTool || !selectedToolKey) {
+      return;
+    }
+    const entry = flatMcpTools.find(item => item.key === selectedToolKey);
+    if (!entry) {
+      return;
+    }
+    const args = await collectArguments(entry.tool);
+    if (args === null) {
+      return;
+    }
+    try {
+      await onRunMcpTool(entry.option.serverId, entry.tool, args);
+    } catch (error) {
+      console.error('Не удалось выполнить MCP-инструмент', error);
+      alert(`Ошибка запуска инструмента: ${(error as Error).message}`);
+    }
+  }, [collectArguments, flatMcpTools, onRunMcpTool, selectedToolKey]);
 
   return (
     <main className="chat-panel">
@@ -167,6 +287,44 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       </div>
 
       <form className="chat-form" onSubmit={handleSubmit}>
+        <div className="mcp-tool-picker">
+          <label htmlFor="mcp-tool-select" className="mcp-tool-label">
+            Инструменты MCP
+          </label>
+          <div className="mcp-tool-controls">
+            <select
+              id="mcp-tool-select"
+              className="mcp-tool-select"
+              value={selectedToolKey}
+              onChange={(event) => setSelectedToolKey(event.target.value)}
+              disabled={isTyping || isMcpBusy || flatMcpTools.length === 0}
+            >
+              <option value="">
+                {flatMcpTools.length === 0 ? 'Нет доступных инструментов' : 'Выберите инструмент'}
+              </option>
+              {mcpOptions?.map(option => (
+                <optgroup key={option.serverId} label={`MCP · ${option.serverName}`}>
+                  {option.tools.map(tool => (
+                    <option key={`${option.serverId}::${tool.name}`} value={`${option.serverId}::${tool.name}`}>
+                      {tool.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="mcp-tool-run"
+              onClick={handleRunSelectedTool}
+              disabled={isTyping || isMcpBusy || !selectedToolKey}
+            >
+              Запустить
+            </button>
+          </div>
+          {flatMcpTools.length === 0 && (
+            <div className="mcp-tool-empty">Нет серверов — добавьте MCP Server</div>
+          )}
+        </div>
         {pendingAttachments.length > 0 && (
           <div className="attachment-preview-list">
             {pendingAttachments.map(attachment => (

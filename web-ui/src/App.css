@@ -415,6 +415,62 @@
   scrollbar-color: rgba(0, 255, 144, 0.4) transparent;
 }
 
+.mcp-tool-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(0, 255, 144, 0.12);
+  background: rgba(0, 255, 144, 0.05);
+}
+
+.mcp-tool-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(0, 255, 144, 0.85);
+}
+
+.mcp-tool-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mcp-tool-select {
+  flex: 1;
+  min-width: 180px;
+}
+
+.mcp-tool-run {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 255, 144, 0.3);
+  background: rgba(0, 0, 0, 0.45);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.mcp-tool-run:hover:not(:disabled) {
+  border-color: rgba(0, 255, 144, 0.65);
+  background: rgba(0, 255, 144, 0.12);
+  transform: translateY(-1px);
+}
+
+.mcp-tool-run:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mcp-tool-empty {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
 .chat-window::-webkit-scrollbar {
   width: 8px;
 }
@@ -1248,6 +1304,152 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.mcp-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: 1px solid rgba(0, 255, 144, 0.1);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.mcp-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mcp-server-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+.mcp-server-item {
+  border: 1px solid rgba(0, 255, 144, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: rgba(0, 255, 144, 0.03);
+}
+
+.mcp-server-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mcp-server-name {
+  font-weight: 600;
+  color: #00ff90;
+}
+
+.mcp-server-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.mcp-server-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mcp-status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(0, 255, 144, 0.12);
+}
+
+.mcp-server-binding {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mcp-server-binding.muted {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.mcp-server-editor {
+  border-top: 1px solid rgba(0, 255, 144, 0.1);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.editor-field input,
+.editor-field textarea,
+.editor-field select {
+  width: 100%;
+}
+
+.header-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.editor-tools {
+  border-top: 1px solid rgba(0, 255, 144, 0.1);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editor-tools ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-error {
+  color: rgba(255, 120, 120, 0.9);
+  font-size: 0.8rem;
+}
+
+.settings-loading,
+.settings-empty {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .image-settings {

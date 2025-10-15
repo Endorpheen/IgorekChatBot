@@ -22,6 +22,7 @@ export interface ThreadSettings {
   openRouterApiKey: string;
   openRouterModel: string;
   historyMessageCount: number;
+  mcpBindings?: Record<string, string[]>;
 }
 
 export interface ThreadSettingsMap {

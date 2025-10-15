@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatResponse, ThreadSettings } from '../types/chat';
+import type { McpBinding, McpProbeResponse, McpRunResult, McpServer, McpServerForm } from '../types/mcp';
 import type {
   ImageJobCreateResponse,
   ImageJobStatusResponse,
@@ -82,6 +83,113 @@ const parseErrorResponse = async (response: Response): Promise<never> => {
   }
 
   throw new ApiError(message, response.status, code);
+};
+
+interface McpRunPayload {
+  server_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  thread_id: string;
+}
+
+const buildHeaders = (): HeadersInit => ({
+  'Content-Type': 'application/json',
+});
+
+const toServerPayload = (server: McpServerForm) => {
+  const headers: Record<string, string> = {};
+  for (const entry of server.headers) {
+    if (entry.key && entry.key.trim() && entry.value && entry.value.trim()) {
+      headers[entry.key.trim()] = entry.value.trim();
+    }
+  }
+  return {
+    id: server.id,
+    name: server.name,
+    transport: server.transport,
+    url: server.url,
+    headers,
+    allow_tools: server.allow_tools,
+    timeout_s: server.timeout_s ?? null,
+    max_output_kb: server.max_output_kb ?? null,
+    notes: server.notes ?? null,
+    max_calls_per_minute_per_thread: server.max_calls_per_minute_per_thread ?? null,
+  };
+};
+
+export const fetchMcpServers = async (): Promise<McpServer[]> => {
+  const response = await fetch(buildApiUrl('/mcp/servers'));
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  const data = (await response.json()) as McpServer[];
+  return data;
+};
+
+export const saveMcpServer = async (server: McpServerForm): Promise<McpServer> => {
+  const response = await fetch(buildApiUrl('/mcp/servers'), {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(toServerPayload(server)),
+  });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return (await response.json()) as McpServer;
+};
+
+export const probeMcpServer = async (serverId: string): Promise<McpProbeResponse> => {
+  const response = await fetch(buildApiUrl(`/mcp/servers/${serverId}/probe`), {
+    method: 'POST',
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return (await response.json()) as McpProbeResponse;
+};
+
+export const fetchMcpServerTools = async (serverId: string): Promise<McpProbeResponse> => {
+  const response = await fetch(buildApiUrl(`/mcp/servers/${serverId}/tools`));
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return (await response.json()) as McpProbeResponse;
+};
+
+export const fetchMcpBindings = async (threadId: string): Promise<McpBinding[]> => {
+  const response = await fetch(buildApiUrl(`/mcp/bindings/${threadId}`));
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return (await response.json()) as McpBinding[];
+};
+
+export const bindMcpServer = async (binding: McpBinding, role: 'owner' | 'moderator' = 'owner'): Promise<McpBinding> => {
+  const response = await fetch(buildApiUrl('/mcp/bind'), {
+    method: 'POST',
+    headers: {
+      ...buildHeaders(),
+      'X-Chat-Role': role,
+    },
+    body: JSON.stringify(binding),
+  });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return (await response.json()) as McpBinding;
+};
+
+export const runMcpTool = async (payload: McpRunPayload): Promise<McpRunResult> => {
+  const response = await fetch(buildApiUrl('/mcp/run'), {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+  return (await response.json()) as McpRunResult;
 };
 
 interface OpenRouterMessage {
@@ -198,49 +306,12 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   const message = data.choices[0]?.message;
   const content = message?.content || '';
   const toolCalls = message?.tool_calls;
-  let finalResponse = content;
   if (toolCalls && toolCalls.length > 0) {
-    messages.push(message);
-    for (const toolCall of toolCalls) {
-      const toolName = toolCall.function.name;
-      const arguments_ = JSON.parse(toolCall.function.arguments);
-      let result;
-      if (toolName === 'search') {
-        result = await executeMCPTool('search', arguments_);
-      } else if (toolName === 'fetch') {
-        result = await executeMCPTool('fetch', arguments_);
-      } else {
-        result = 'Unknown tool';
-      }
-      messages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: JSON.stringify(result, null, 2)
-      });
-    }
-    const followupResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${settings.openRouterApiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Roo Control Terminal',
-      },
-      body: JSON.stringify({
-        model: settings.openRouterModel,
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 2048,
-      }),
-    });
-    if (followupResponse.ok) {
-      const followupData = await followupResponse.json();
-      finalResponse = followupData.choices[0]?.message?.content || content;
-    }
+    console.warn('OpenRouter tool_calls получены, но обработка выполняется через MCP UI', toolCalls);
   }
   return {
     status: 'success',
-    response: finalResponse,
+    response: content,
     thread_id: payload.thread_id,
   };
 };
@@ -468,79 +539,4 @@ export const uploadImagesForAnalysis = async ({ files, threadId, history, settin
   }
 
   return (await response.json()) as ImageUploadResponse;
-};
-
-export const callMCP = async (method: string, params: Record<string, unknown>) => {
-  const mcpUrl = import.meta.env.VITE_MCP_URL;
-  if (!mcpUrl) {
-    throw new Error('VITE_MCP_URL не настроен');
-  }
-
-  const token = import.meta.env.VITE_AUTH_TOKEN;
-  if (!token) {
-    throw new Error('VITE_AUTH_TOKEN не настроен');
-  }
-
-  const payload = {
-    jsonrpc: '2.0',
-    id: 1,
-    method,
-    params,
-  };
-
-  const response = await fetch(mcpUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error(`MCP API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`MCP RPC error: ${data.error}`);
-  }
-
-  return data.result;
-};
-
-export const executeMCPTool = async (toolName: string, args: Record<string, unknown>) => {
-  try {
-    if (toolName === 'search') {
-      const result = await callMCP('tools/call', {
-        name: 'search',
-        arguments: { query: args.query, since: args.since },
-      });
-      const contentItems = result.content || [];
-      if (contentItems.length > 0) {
-        const first = contentItems[0];
-        if (first.json) {
-          return first.json.results || [];
-        }
-      }
-      return [];
-    } else if (toolName === 'fetch') {
-      const result = await callMCP('tools/call', {
-        name: 'fetch',
-        arguments: { id: args.id },
-      });
-      const contentItems = result.content || [];
-      if (contentItems.length > 0) {
-        const first = contentItems[0];
-        if (first.json) {
-          return first.json.content || '';
-        }
-      }
-      return '';
-    }
-    return 'Unknown tool';
-  } catch (error) {
-    console.error(`Ошибка выполнения MCP tool ${toolName}:`, error);
-    return `Ошибка: ${error}`;
-  }
 };

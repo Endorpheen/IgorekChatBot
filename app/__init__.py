@@ -69,6 +69,11 @@ def create_app() -> FastAPI:
     app.include_router(seo_router)
     app.include_router(root_router)
 
+    if settings.mcp_feature_enabled:
+        from app.mcp.router import router as mcp_router
+
+        app.include_router(mcp_router)
+
     register_webui(app, settings)
 
     return app

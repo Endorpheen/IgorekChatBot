@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import './App.css';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
-import { callAgent, uploadImagesForAnalysis } from './utils/api';
+import type { McpServer, McpTool } from './types/mcp';
+import { callAgent, uploadImagesForAnalysis, fetchMcpServers, fetchMcpBindings, fetchMcpServerTools, runMcpTool } from './utils/api';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -29,7 +30,6 @@ interface PendingAttachment {
 }
 
 const MAX_PENDING_ATTACHMENTS = 4;
-
 const AppContent = () => {
   const {
     messages,
@@ -61,6 +61,12 @@ const AppContent = () => {
   const [musicMuted, setMusicMuted] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [keyRefreshToken, setKeyRefreshToken] = useState(0);
+  const [mcpServersState, setMcpServersState] = useState<McpServer[]>([]);
+  const [mcpBindingsState, setMcpBindingsState] = useState<Record<string, string[]>>({});
+  const [mcpToolsState, setMcpToolsState] = useState<Record<string, McpTool[]>>({});
+  const [isMcpLoading, setIsMcpLoading] = useState(false);
+  const [isMcpRunning, setIsMcpRunning] = useState(false);
+  const mcpToolsRef = useRef<Record<string, McpTool[]>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userName = useMemo(() => import.meta.env.VITE_USER_NAME ?? 'Оператор', []);
@@ -121,8 +127,95 @@ const AppContent = () => {
 
   const { audioRef, sendAudioRef } = useAudioPlayer({ musicMuted });
 
+  const handleRunMcpTool = useCallback(async (serverId: string, tool: McpTool, args: Record<string, unknown>) => {
+    const serverName = mcpServersState.find((server) => server.id === serverId)?.name ?? serverId;
+    const wasTyping = isTyping;
+    if (!wasTyping) {
+      setIsTyping(true);
+    }
+    setIsMcpRunning(true);
+    try {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: `Запускаю MCP-инструмент ${tool.name} (сервер: ${serverName}).`,
+        threadId,
+      });
+      const result = await runMcpTool({
+        server_id: serverId,
+        tool_name: tool.name,
+        arguments: args,
+        thread_id: threadId,
+      });
+
+      const formattedOutput = (() => {
+        if (typeof result.output === 'string') {
+          return result.output;
+        }
+        if (result.output && typeof result.output === 'object') {
+          try {
+            return JSON.stringify(result.output, null, 2);
+          } catch (error) {
+            console.error('Не удалось сериализовать ответ инструмента', error);
+          }
+        }
+        return result.output ? String(result.output) : '';
+      })();
+
+      const lines = [
+        `MCP · ${serverName} · ${tool.name}`,
+        `Статус: ${result.status.toUpperCase()}`,
+        result.duration_ms ? `Длительность: ${result.duration_ms} мс` : null,
+        result.truncated ? 'Ответ обрезан по лимиту вывода.' : null,
+        formattedOutput ? `Ответ:\n${formattedOutput}` : null,
+        result.error ? `Ошибка: ${result.error}` : null,
+        `Trace ID: ${result.trace_id}`,
+      ].filter(Boolean).join('\n');
+
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: lines,
+        threadId,
+      });
+    } catch (error) {
+      console.error('Ошибка запуска MCP инструмента', error);
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: `Ошибка при запуске MCP инструмента: ${(error as Error).message}`,
+        threadId,
+      });
+    } finally {
+      if (!wasTyping) {
+        setIsTyping(false);
+      }
+      setIsMcpRunning(false);
+    }
+  }, [isTyping, mcpServersState, persistMessage, threadId]);
+
+  const refreshMcpServers = useCallback(async () => {
+    setIsMcpLoading(true);
+    try {
+      const list = await fetchMcpServers();
+      setMcpServersState(list);
+      return list;
+    } catch (error) {
+      console.error('Не удалось загрузить MCP серверы', error);
+      return [] as McpServer[];
+    } finally {
+      setIsMcpLoading(false);
+    }
+  }, []);
+
   const getCurrentThreadSettings = (): ThreadSettings => {
-    return threadSettings[threadId] || { openRouterEnabled: false, openRouterApiKey: '', openRouterModel: 'openai/gpt-4o-mini', historyMessageCount: 5 };
+    return threadSettings[threadId] || {
+      openRouterEnabled: false,
+      openRouterApiKey: '',
+      openRouterModel: 'openai/gpt-4o-mini',
+      historyMessageCount: 5,
+      mcpBindings: {},
+    };
   };
 
   const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
@@ -139,8 +232,95 @@ const AppContent = () => {
   }, []);
 
   useEffect(() => {
+    void refreshMcpServers();
+  }, [refreshMcpServers]);
+
+  useEffect(() => {
+    if (!threadId) {
+      setMcpBindingsState({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadBindings = async () => {
+      setIsMcpLoading(true);
+      try {
+        const data = await fetchMcpBindings(threadId);
+        if (cancelled) {
+          return;
+        }
+        const mapping: Record<string, string[]> = {};
+        data.forEach(binding => {
+          mapping[binding.server_id] = binding.enabled_tools;
+        });
+        setMcpBindingsState(mapping);
+
+        const missingTools = Object.keys(mapping).filter(serverId => !mcpToolsRef.current[serverId]);
+        await Promise.all(missingTools.map(async (serverId) => {
+          try {
+            const tools = await fetchMcpServerTools(serverId);
+            if (!cancelled) {
+              setMcpToolsState(prev => ({ ...prev, [serverId]: tools.tools }));
+            }
+          } catch (error) {
+            console.error('Не удалось получить инструменты MCP', error);
+          }
+        }));
+      } catch (error) {
+        console.error('Не удалось получить привязки MCP', error);
+        if (!cancelled) {
+          setMcpBindingsState({});
+        }
+      } finally {
+        if (!cancelled) {
+          setIsMcpLoading(false);
+        }
+      }
+    };
+
+    void loadBindings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId]);
+
+  useEffect(() => {
+    const missing = Object.keys(mcpBindingsState).filter(serverId => !mcpToolsRef.current[serverId]);
+    if (missing.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const loadMissing = async () => {
+      try {
+        await Promise.all(missing.map(async (serverId) => {
+          try {
+            const tools = await fetchMcpServerTools(serverId);
+            if (!cancelled) {
+              setMcpToolsState(prev => ({ ...prev, [serverId]: tools.tools }));
+            }
+          } catch (error) {
+            console.error('Не удалось получить инструменты MCP', error);
+          }
+        }));
+      } finally {
+        // nothing
+      }
+    };
+    void loadMissing();
+    return () => {
+      cancelled = true;
+    };
+  }, [mcpBindingsState]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, threadId]);
+
+  useEffect(() => {
+    mcpToolsRef.current = mcpToolsState;
+  }, [mcpToolsState]);
 
   const handleNewThread = () => {
     const newThreadId = uuidv4();
@@ -332,6 +512,26 @@ const AppContent = () => {
 
   const messagesToRender = useMemo(() => messages.filter(msg => msg.threadId === threadId), [messages, threadId]);
 
+  const mcpOptions = useMemo(() => {
+    return mcpServersState
+      .map(server => {
+        const enabled = mcpBindingsState[server.id] || [];
+        if (enabled.length === 0) {
+          return null;
+        }
+        const tools = (mcpToolsState[server.id] || []).filter(tool => enabled.includes(tool.name));
+        if (tools.length === 0) {
+          return null;
+        }
+        return {
+          serverId: server.id,
+          serverName: server.name,
+          tools,
+        };
+      })
+      .filter((item): item is { serverId: string; serverName: string; tools: McpTool[] } => item !== null);
+  }, [mcpServersState, mcpBindingsState, mcpToolsState]);
+
   useEffect(() => {
     if (location.pathname === '/' || isImagesRoute) {
       return;
@@ -419,6 +619,9 @@ const AppContent = () => {
                   COMMON_COMMANDS={COMMON_COMMANDS}
                   pendingAttachments={pendingAttachments.map(({ id, previewUrl, name }) => ({ id, previewUrl, name }))}
                   removeAttachment={handleRemoveAttachment}
+                  mcpOptions={mcpOptions}
+                  onRunMcpTool={handleRunMcpTool}
+                  isMcpBusy={isMcpRunning || isMcpLoading}
                 />
               </div>
               <Footer openSettings={() => setIsSettingsOpen(true)} />
@@ -434,6 +637,8 @@ const AppContent = () => {
         threadNames={threadNames}
         threadId={threadId}
         onImageKeyChange={() => setKeyRefreshToken((value) => value + 1)}
+        onMcpServersUpdated={setMcpServersState}
+        onMcpBindingsUpdated={setMcpBindingsState}
       />
       <audio
         ref={audioRef}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 import type { ThreadSettings } from '../types/settings';
+import type { McpServer } from '../types/mcp';
 import ImageGenerationSettings from './ImageGenerationSettings';
+import McpSettings from './McpSettings';
 
 interface SettingsPanelProps {
   isSettingsOpen: boolean;
@@ -11,6 +13,8 @@ interface SettingsPanelProps {
   threadNames: Record<string, string>;
   threadId: string;
   onImageKeyChange?: () => void;
+  onMcpServersUpdated?: (servers: McpServer[]) => void;
+  onMcpBindingsUpdated?: (bindings: Record<string, string[]>) => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -21,6 +25,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   threadNames,
   threadId,
   onImageKeyChange,
+  onMcpServersUpdated,
+  onMcpBindingsUpdated,
 }) => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -40,7 +46,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       openRouterEnabled: false,
       openRouterApiKey: '',
       openRouterModel: 'openai/gpt-4o-mini',
-      historyMessageCount: 5 // Default value
+      historyMessageCount: 5,
+      mcpBindings: {},
     };
   };
 
@@ -101,6 +108,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         <div className="settings-content">
           <ImageGenerationSettings isOpen={isSettingsOpen} onKeyChange={onImageKeyChange} />
+          <McpSettings
+            threadId={threadId}
+            isOpen={isSettingsOpen}
+            onServersUpdated={onMcpServersUpdated}
+            onBindingsUpdated={onMcpBindingsUpdated}
+          />
 
           <div className="setting-group">
             <label className="setting-label">

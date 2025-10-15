@@ -19,9 +19,20 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_CSE_ID=${GOOGLE_CSE_ID}
       - VITE_AGENT_API_BASE=http://chatbot:3000
+      - VITE_MCP_FEATURE_ENABLED=${MCP_FEATURE_ENABLED:-false}
+      - MCP_FEATURE_ENABLED=${MCP_FEATURE_ENABLED:-false}
+      - MCP_SECRET_KEY=${MCP_SECRET_KEY:-changeme}
+      - MCP_STDIO_ENABLE=${MCP_STDIO_ENABLE:-false}
+      - MCP_ALLOW_INTERNAL=${MCP_ALLOW_INTERNAL:-false}
+      - MCP_DEFAULT_TIMEOUT_S=${MCP_DEFAULT_TIMEOUT_S:-30}
+      - MCP_MAX_OUTPUT_KB=${MCP_MAX_OUTPUT_KB:-512}
+      - MCP_MAX_CALLS_PER_MINUTE_PER_THREAD=${MCP_MAX_CALLS_PER_MINUTE_PER_THREAD:-5}
+      - MCP_CONCURRENCY_LIMIT=${MCP_CONCURRENCY_LIMIT:-2}
     # Порты наружу не нужны, если через Caddy
     # ports:
     #   - "3000:3000"
+    depends_on:
+      - mcp_server
   sandbox_executor:
     build:
       context: ./sandbox_executor
@@ -41,6 +52,44 @@ services:
       - mcpnet
     mem_limit: 512m
     cpus: 1.5
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - mcpnet
+
+  mcp_server:
+    build:
+      context: /root/mcp-vault
+      dockerfile: Dockerfile.node
+    container_name: mcp_server
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - PORT=3000
+      - VAULT_PATH=/vault
+      - REQUIRE_JWT=false
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - /root/vault:/vault
+    networks:
+      - mcpnet
+    read_only: true
+    mem_limit: 512m
 networks:
   mcpnet:
     external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
