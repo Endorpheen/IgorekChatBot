@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { mcpSearch, mcpFetch, callAgent } from '../utils/api';
 import { ApiError } from '../utils/api';
 import { Copy, Timer, HardDrive } from 'lucide-react';
+import { useChatState } from '../hooks/useChatState';
 import './McpPanel.css';
 
 const McpPanel: React.FC = () => {
+  const { persistMessage, threadId } = useChatState();
+
   const [query, setQuery] = useState('');
   const [fetchId, setFetchId] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -26,8 +29,8 @@ const McpPanel: React.FC = () => {
       return;
     }
 
-    // Получаем активный тред из localStorage
-    const activeThreadId = localStorage.getItem('roo_agent_thread') || 'default';
+    // Используем тот же threadId что и в основном чате
+    const activeThreadId = threadId || 'default';
     if (!activeThreadId) {
       alert('Нет активного чата, создайте новый тред в интерфейсе Игорька');
       return;
@@ -38,6 +41,14 @@ const McpPanel: React.FC = () => {
     try {
       const jsonContent = JSON.stringify(result.data, null, 2);
       const prompt = `Прокомментируй эту заметку в человекочитаемом виде:\n${jsonContent}`;
+
+      // Сохраняем запрос пользователя в историю (как в основном чате)
+      persistMessage({
+        type: 'user',
+        contentType: 'text',
+        content: prompt,
+        threadId: activeThreadId,
+      });
 
       // Проверяем результат API вызова
       console.log('[MCP ASK IGOREK] Calling callAgent with:', {
@@ -59,8 +70,16 @@ const McpPanel: React.FC = () => {
       console.log('[MCP ASK IGOREK] Response object:', response);
       console.log('[MCP ASK IGOREK] Response status value:', response?.status);
 
-      if (response && (response.status === 'Message processed' || response.status === 'success')) {
-        console.log('[MCP ASK IGOREK] Success! Redirecting to chat...');
+      if (response && response.status === 'Message processed') {
+        // Сохраняем ответ бота в историю (как в основном чате)
+        persistMessage({
+          type: 'bot',
+          contentType: 'text',
+          content: response.response || 'Ответ получен, но не удалось извлечь текст',
+          threadId: response.thread_id || activeThreadId,
+        });
+
+        console.log('[MCP ASK IGOREK] Success! Message saved to history, redirecting to chat...');
         // Редирект на главную страницу чата только после успешного ответа
         window.location.href = '/';
       } else {
