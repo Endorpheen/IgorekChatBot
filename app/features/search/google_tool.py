@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from collections import deque
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import requests
 from langchain.tools import tool
