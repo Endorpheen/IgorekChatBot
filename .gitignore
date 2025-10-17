@@ -48,3 +48,4 @@ replacements.txt
 tempfiles/ 
 *.tar.gz
 uploads/
+test-*.wav
