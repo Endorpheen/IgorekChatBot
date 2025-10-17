@@ -39,15 +39,22 @@ const McpPanel: React.FC = () => {
       const jsonContent = JSON.stringify(result.data, null, 2);
       const prompt = `Прокомментируй эту заметку в человекочитаемом виде:\n${jsonContent}`;
 
-      // Отправляем промпт в активный тред
-      await callAgent({
+      // Проверяем результат API вызова
+      const response = await callAgent({
         message: prompt,
         thread_id: activeThreadId,
-        user_id: 'mcp-user', // Можно использовать любой идентификатор
       });
 
-      // Редирект на главную страницу чата
-      window.location.href = '/';
+      console.log('Ответ от API:', response);
+
+      // Проверяем что ответ успешен
+      if (response && response.status === 'success') {
+        console.log('Сообщение успешно отправлено в чат');
+        // Редирект на главную страницу чата только после успешного ответа
+        window.location.href = '/';
+      } else {
+        throw new Error('Не удалось отправить сообщение в чат');
+      }
     } catch (error) {
       console.error('Ошибка отправки в чат:', error);
       alert('Ошибка при отправке в чат: ' + (error as Error).message);

@@ -245,7 +245,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   };
 };
 
-export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
+export const callAgent = async (payload: { message: string; thread_id?: string; user_id?: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
   const systemPrompt = (typeof window !== 'undefined' ? localStorage.getItem('systemPrompt') : null)?.trim();
 
   const messages: AgentApiMessage[] = [];
