@@ -118,6 +118,39 @@
   background-color: #4b5563; /* gray-600 */
 }
 
+/* Стили для контейнера кнопок действий */
+.mcp-action-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.mcp-result-container .ask-igorek-button {
+  background-color: #14b8a6; /* teal-500 */
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mcp-result-container .ask-igorek-button:hover:not(:disabled) {
+  background-color: #0d9488; /* teal-600 */
+}
+
+.mcp-result-container .ask-igorek-button:disabled {
+  background-color: #4b5563; /* gray-600 */
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Дополнительные стили для лучшего позиционирования кнопки */
 .mcp-result-header .copy-json-button {
   margin-left: 1rem;
@@ -169,5 +202,15 @@
     margin-left: 0;
     margin-top: 0.5rem;
     align-self: flex-end;
+  }
+
+  .mcp-action-buttons {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .mcp-result-container .ask-igorek-button {
+    width: 100%;
+    justify-content: center;
   }
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { mcpSearch, mcpFetch } from '../utils/api';
+import { mcpSearch, mcpFetch, callAgent } from '../utils/api';
 import { ApiError } from '../utils/api';
 import { Copy, Timer, HardDrive } from 'lucide-react';
 import './McpPanel.css';
@@ -12,11 +12,48 @@ const McpPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
   const [responseSize, setResponseSize] = useState<number | null>(null);
+  const [sendingToChat, setSendingToChat] = useState(false);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).catch(err => {
       console.error('Failed to copy text: ', err);
     });
+  };
+
+  const handleAskIgorek = async () => {
+    if (!result || !result.data) {
+      alert('Нет данных трейса для отправки');
+      return;
+    }
+
+    // Получаем активный тред из localStorage
+    const activeThreadId = localStorage.getItem('roo_agent_thread') || 'default';
+    if (!activeThreadId) {
+      alert('Нет активного чата, создайте новый тред в интерфейсе Игорька');
+      return;
+    }
+
+    setSendingToChat(true);
+
+    try {
+      const jsonContent = JSON.stringify(result.data, null, 2);
+      const prompt = `Прокомментируй эту заметку в человекочитаемом виде:\n${jsonContent}`;
+
+      // Отправляем промпт в активный тред
+      await callAgent({
+        message: prompt,
+        thread_id: activeThreadId,
+        user_id: 'mcp-user', // Можно использовать любой идентификатор
+      });
+
+      // Редирект на главную страницу чата
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Ошибка отправки в чат:', error);
+      alert('Ошибка при отправке в чат: ' + (error as Error).message);
+    } finally {
+      setSendingToChat(false);
+    }
   };
 
   const handleRequest = async (apiCall: () => Promise<any>) => {
@@ -87,7 +124,20 @@ const McpPanel: React.FC = () => {
             <span>{responseSize ? (responseSize / 1024).toFixed(2) : '0'} KB</span>
           </div>
         </div>
-        {result && <button className="copy-json-button" onClick={() => copyToClipboard(jsonString)}>Copy JSON</button>}
+        {result && (
+          <div className="mcp-action-buttons">
+            <button className="copy-json-button" onClick={() => copyToClipboard(jsonString)}>
+              Copy JSON
+            </button>
+            <button
+              className="ask-igorek-button"
+              onClick={handleAskIgorek}
+              disabled={sendingToChat}
+            >
+              {sendingToChat ? 'Отправка...' : 'Спросить у Игорька'}
+            </button>
+          </div>
+        )}
         {error ? (
           <div className="mcp-error-message">{error}</div>
         ) : (
