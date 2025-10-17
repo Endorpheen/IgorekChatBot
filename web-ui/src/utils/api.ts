@@ -283,12 +283,20 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
     body: JSON.stringify(requestBody),
   });
 
+  console.log('[CALL AGENT] Response status:', response.status);
+  console.log('[CALL AGENT] Response ok:', response.ok);
+
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('[CALL AGENT] Error response:', errorText);
     throw new Error(`Agent API error: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as ChatResponse;
+  console.log('[CALL AGENT] Parsed response data:', data);
+  console.log('[CALL AGENT] Response status field:', data.status);
+  console.log('[CALL AGENT] Response response field:', data.response);
+
   return data;
 };
 

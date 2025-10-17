@@ -40,20 +40,37 @@ const McpPanel: React.FC = () => {
       const prompt = `Прокомментируй эту заметку в человекочитаемом виде:\n${jsonContent}`;
 
       // Проверяем результат API вызова
+      console.log('[MCP ASK IGOREK] Calling callAgent with:', {
+        message: prompt.substring(0, 100) + '...',
+        thread_id: activeThreadId,
+      });
+
       const response = await callAgent({
         message: prompt,
         thread_id: activeThreadId,
       });
 
-      console.log('Ответ от API:', response);
+      console.log('[MCP ASK IGOREK] Raw API response:', response);
+      console.log('[MCP ASK IGOREK] Response type:', typeof response);
+      console.log('[MCP ASK IGOREK] Response keys:', response ? Object.keys(response) : 'null');
 
       // Проверяем что ответ успешен
-      if (response && response.status === 'success') {
-        console.log('Сообщение успешно отправлено в чат');
+      console.log('[MCP ASK IGOREK] Checking response validity...');
+      console.log('[MCP ASK IGOREK] Response object:', response);
+      console.log('[MCP ASK IGOREK] Response status value:', response?.status);
+
+      if (response && (response.status === 'Message processed' || response.status === 'success')) {
+        console.log('[MCP ASK IGOREK] Success! Redirecting to chat...');
         // Редирект на главную страницу чата только после успешного ответа
         window.location.href = '/';
       } else {
-        throw new Error('Не удалось отправить сообщение в чат');
+        console.error('[MCP ASK IGOREK] Invalid response structure:', {
+          hasResponse: !!response,
+          status: response?.status,
+          responseKeys: response ? Object.keys(response) : [],
+          fullResponse: response
+        });
+        throw new Error(`Не удалось отправить сообщение в чат. Ответ сервера: ${JSON.stringify(response)}`);
       }
     } catch (error) {
       console.error('Ошибка отправки в чат:', error);
