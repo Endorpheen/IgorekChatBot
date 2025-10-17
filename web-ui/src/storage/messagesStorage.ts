@@ -2,7 +2,6 @@ import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from '
 import type { ChatMessage } from '../types/chat';
 
 const DB_NAME = 'chatbotDB';
-const DB_VERSION = 1;
 const STORE_NAME = 'messages';
 const THREAD_INDEX = 'by-thread';
 const THREAD_TIME_INDEX = 'by-thread-createdAt';
@@ -181,7 +180,7 @@ const getDb = async (): Promise<IDBPDatabase<ChatbotDB>> => {
   }
 
   if (!dbPromise) {
-    dbPromise = openDB<ChatbotDB>(DB_NAME, DB_VERSION, {
+    dbPromise = openDB<ChatbotDB>(DB_NAME, undefined, {
       upgrade(database) {
         if (!database.objectStoreNames.contains(STORE_NAME)) {
           const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
