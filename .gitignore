@@ -45,7 +45,10 @@ refresh_jwt.sh
 # History rewrite artifacts (sensitive)
 replacements.txt
 
-tempfiles/ 
+tempfiles/
 *.tar.gz
 uploads/
 test-*.wav
+
+# Docusaurus node_modules (exclude from Git tracking)
+docs/node_modules/
