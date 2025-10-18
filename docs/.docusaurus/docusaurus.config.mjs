@@ -4,9 +4,9 @@
  * Modify the docusaurus.config.js file at your site's root instead.
  */
 export default {
-  "title": "My Site",
+  "title": "Igorek ChatBot Docs",
   "tagline": "Dinosaurs are cool",
-  "favicon": "img/favicon.ico",
+  "favicon": "https://igorekchatbot.ru/favicon.ico",
   "url": "https://your-docusaurus-site.example.com",
   "baseUrl": "/",
   "onBrokenLinks": "throw",
@@ -35,10 +35,10 @@ export default {
   "themeConfig": {
     "image": "img/docusaurus-social-card.jpg",
     "navbar": {
-      "title": "My Site",
+      "title": "Igorek ChatBot Docs",
       "logo": {
-        "alt": "My Site Logo",
-        "src": "img/logo.svg"
+        "alt": "Igorek ChatBot Logo",
+        "src": "https://igorekchatbot.ru/favicon.ico"
       },
       "items": [
         {
