@@ -12,7 +12,7 @@
       {
         "type": "link",
         "label": "Intro",
-        "href": "/docs/intro",
+        "href": "/guide/docs/intro",
         "docId": "intro",
         "unlisted": false
       }

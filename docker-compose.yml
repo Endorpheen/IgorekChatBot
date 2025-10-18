@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./uploads:/app/uploads
+      - ./docs/build:/app/docs/build
     networks:
       - mcpnet
     depends_on:
