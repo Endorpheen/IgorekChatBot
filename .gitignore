@@ -52,3 +52,6 @@ test-*.wav
 
 # Docusaurus node_modules (exclude from Git tracking)
 docs/node_modules/
+docs/.docusaurus/
+docs/build/
+docs/guide/
