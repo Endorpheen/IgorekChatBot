@@ -35,23 +35,27 @@ Thumbs.db
 *.bak
 *~
 
-#For temp files
+# For temp files
 .agent_notes/
 
-
-.refresh_jwt.sh 
 # Scripts containing secrets
+.refresh_jwt.sh 
 refresh_jwt.sh
+
 # History rewrite artifacts (sensitive)
 replacements.txt
 
+# Temporary and build files
 tempfiles/
 *.tar.gz
 uploads/
 test-*.wav
 
-# Docusaurus node_modules (exclude from Git tracking)
+# Docusaurus build and cache
 docs/node_modules/
 docs/.docusaurus/
 docs/build/
 docs/guide/
+
+# Local production config (do not push)
+docker-compose.production.yml
