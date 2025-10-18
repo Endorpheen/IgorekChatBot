@@ -52,3 +52,4 @@ test-*.wav
 
 # Docusaurus node_modules (exclude from Git tracking)
 docs/node_modules/
+docker-compose.production.yml
