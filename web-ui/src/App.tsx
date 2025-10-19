@@ -125,7 +125,6 @@ const AppContent = () => {
 
   const getCurrentThreadSettings = (): ThreadSettings => {
     return threadSettings[threadId] || {
-      openRouterEnabled: false,
       openRouterApiKey: '',
       openRouterModel: 'openai/gpt-4o-mini',
       historyMessageCount: 5,
@@ -286,11 +285,11 @@ const AppContent = () => {
       }
 
       if (hasImages) {
-        if (!currentSettings.openRouterEnabled || !currentSettings.openRouterApiKey) {
+        if (!currentSettings.openRouterApiKey) {
           persistMessage({
             type: 'bot',
             contentType: 'text',
-            content: 'Для анализа изображений включите OpenRouter и укажите API ключ в настройках этого треда.',
+            content: 'Для анализа изображений укажите API ключ OpenRouter в настройках этого треда.',
             threadId,
           });
           return;

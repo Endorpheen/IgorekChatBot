@@ -40,7 +40,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   const getCurrentThreadSettings = () => {
     return threadSettings[threadId] || {
-      openRouterEnabled: false,
       openRouterApiKey: '',
       openRouterModel: 'openai/gpt-4o-mini',
       historyMessageCount: 5, // Default value
@@ -130,11 +129,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   useEffect(() => {
-    if (isSettingsOpen && getCurrentThreadSettings().openRouterApiKey) {
+    const settings = getCurrentThreadSettings();
+    if (
+      isSettingsOpen &&
+      (settings.chatProvider ?? 'openrouter') === 'openrouter' &&
+      settings.openRouterApiKey
+    ) {
       loadAvailableModels();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSettingsOpen, threadSettings[threadId]?.openRouterApiKey]);
+  }, [isSettingsOpen, threadSettings[threadId]?.openRouterApiKey, threadSettings[threadId]?.chatProvider]);
 
   useEffect(() => {
     const s = getCurrentThreadSettings();
@@ -153,6 +157,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     threadSettings[threadId]?.agentRouterApiKey,
     threadSettings[threadId]?.chatProvider
   ]);
+
+  const currentSettings = getCurrentThreadSettings();
+  const provider = currentSettings.chatProvider ?? 'openrouter';
+  const isOpenRouter = provider === 'openrouter';
+  const isAgentRouter = provider === 'agentrouter';
 
   if (!isSettingsOpen) {
     return null;
@@ -185,7 +194,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <label className="setting-label" htmlFor="chatProvider">Провайдер</label>
               <select
                 id="chatProvider"
-                value={getCurrentThreadSettings().chatProvider ?? 'openrouter'}
+                value={provider}
                 onChange={(e) => updateCurrentThreadSettings({ chatProvider: e.target.value as 'openrouter' | 'agentrouter' })}
                 className="settings-select"
               >
@@ -196,144 +205,137 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
 
           <div className="settings-section">
-            <div className="settings-section-header">
-              <h4 className="settings-section-title">Настройки OpenRouter</h4>
-              <p className="settings-section-subtitle">
-                Настройка применяется только к текущему треду: {threadNames[threadId] ?? 'Без названия'}
-              </p>
-            </div>
+            <div
+              className={`settings-provider-card ${isOpenRouter ? 'active' : 'inactive'}`}
+              aria-hidden={!isOpenRouter}
+            >
+              <div className="settings-section-header">
+                <h4 className="settings-section-title">Настройки OpenRouter</h4>
+                <p className="settings-section-subtitle">
+                  Параметры применяются только к текущему треду: {threadNames[threadId] ?? 'Без названия'}
+                </p>
+              </div>
 
-            <label className="setting-toggle">
-              <input
-                type="checkbox"
-                checked={getCurrentThreadSettings().openRouterEnabled}
-                onChange={(e) => updateCurrentThreadSettings({ openRouterEnabled: e.target.checked })}
-              />
-              <span>Использовать OpenRouter (облачная модель)</span>
-            </label>
-
-            {(getCurrentThreadSettings().chatProvider ?? 'openrouter') === 'openrouter' && getCurrentThreadSettings().openRouterEnabled && (
-              <>
-                <div className="setting-field">
-                  <label className="setting-label" htmlFor="openRouterApiKey">
-                    API Key OpenRouter
-                  </label>
-                  <div className="input-with-icon">
-                    <input
-                      id="openRouterApiKey"
-                      type={showApiKey ? 'text' : 'password'}
-                      value={getCurrentThreadSettings().openRouterApiKey}
-                      onChange={(e) => updateCurrentThreadSettings({ openRouterApiKey: e.target.value })}
-                      placeholder="sk-or-v1-..."
-                      className="settings-input"
-                    />
-                    <button
-                      type="button"
-                      className="input-icon-button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      title={showApiKey ? 'Скрыть API ключ' : 'Показать API ключ'}
-                    >
-                      {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="setting-field">
-                  <label className="setting-label" htmlFor="openRouterModel">
-                    Модель
-                  </label>
-                  <select
-                    id="openRouterModel"
-                    value={getCurrentThreadSettings().openRouterModel}
-                    onChange={(e) => updateCurrentThreadSettings({ openRouterModel: e.target.value })}
-                    className="settings-select"
-                    disabled={isLoadingModels || !getCurrentThreadSettings().openRouterApiKey}
+              <div className="setting-field">
+                <label className="setting-label" htmlFor="openRouterApiKey">
+                  API Key OpenRouter
+                </label>
+                <div className="input-with-icon">
+                  <input
+                    id="openRouterApiKey"
+                    type={showApiKey ? 'text' : 'password'}
+                    value={currentSettings.openRouterApiKey}
+                    onChange={(e) => updateCurrentThreadSettings({ openRouterApiKey: e.target.value })}
+                    placeholder="sk-or-v1-..."
+                    className="settings-input"
+                  />
+                  <button
+                    type="button"
+                    className="input-icon-button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    title={showApiKey ? 'Скрыть API ключ' : 'Показать API ключ'}
                   >
-                    {isLoadingModels ? (
-                      <option>Загрузка моделей...</option>
-                    ) : availableModels.length > 0 ? (
-                      availableModels.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))
-                    ) : (
-                      <option disabled>Укажите API ключ для загрузки моделей</option>
-                    )}
-                  </select>
+                    {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
+                  </button>
                 </div>
-              </>
-            )}
+              </div>
+
+              <div className="setting-field">
+                <label className="setting-label" htmlFor="openRouterModel">
+                  Модель
+                </label>
+                <select
+                  id="openRouterModel"
+                  value={currentSettings.openRouterModel}
+                  onChange={(e) => updateCurrentThreadSettings({ openRouterModel: e.target.value })}
+                  className="settings-select"
+                  disabled={isLoadingModels || !currentSettings.openRouterApiKey}
+                >
+                  {isLoadingModels ? (
+                    <option>Загрузка моделей...</option>
+                  ) : availableModels.length > 0 ? (
+                    availableModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>Укажите API ключ для загрузки моделей</option>
+                  )}
+                </select>
+              </div>
+            </div>
           </div>
 
           <div className="settings-section">
-            <div className="settings-section-header">
-              <h4 className="settings-section-title">Настройки AgentRouter</h4>
-              <p className="settings-section-subtitle">
-                Укажите Base URL и API Key для OpenAI-совместимого конечного точки. Модели загружаются автоматически.
-              </p>
-            </div>
+            <div
+              className={`settings-provider-card ${isAgentRouter ? 'active' : 'inactive'}`}
+              aria-hidden={!isAgentRouter}
+            >
+              <div className="settings-section-header">
+                <h4 className="settings-section-title">Настройки OpenAI Compatible</h4>
+                <p className="settings-section-subtitle">
+                  Укажите параметры AgentRouter или совместимого сервиса для работы через OpenAI API.
+                </p>
+              </div>
 
-            {(getCurrentThreadSettings().chatProvider ?? 'openrouter') === 'agentrouter' && (
-              <>
-                <div className="setting-field">
-                  <label className="setting-label" htmlFor="agentRouterBaseUrl">Base URL</label>
+              <div className="setting-field">
+                <label className="setting-label" htmlFor="agentRouterBaseUrl">Base URL</label>
+                <input
+                  id="agentRouterBaseUrl"
+                  type="text"
+                  value={currentSettings.agentRouterBaseUrl ?? ''}
+                  onChange={(e) => updateCurrentThreadSettings({ agentRouterBaseUrl: e.target.value })}
+                  placeholder="https://your-agentrouter.example.com/v1"
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="setting-field">
+                <label className="setting-label" htmlFor="agentRouterApiKey">API Key</label>
+                <div className="input-with-icon">
                   <input
-                    id="agentRouterBaseUrl"
-                    type="text"
-                    value={getCurrentThreadSettings().agentRouterBaseUrl ?? ''}
-                    onChange={(e) => updateCurrentThreadSettings({ agentRouterBaseUrl: e.target.value })}
-                    placeholder="https://your-agentrouter.example.com/v1"
+                    id="agentRouterApiKey"
+                    type={showApiKey ? 'text' : 'password'}
+                    value={currentSettings.agentRouterApiKey ?? ''}
+                    onChange={(e) => updateCurrentThreadSettings({ agentRouterApiKey: e.target.value })}
+                    placeholder="sk-..."
                     className="settings-input"
                   />
-                </div>
-
-                <div className="setting-field">
-                  <label className="setting-label" htmlFor="agentRouterApiKey">API Key AgentRouter</label>
-                  <div className="input-with-icon">
-                    <input
-                      id="agentRouterApiKey"
-                      type={showApiKey ? 'text' : 'password'}
-                      value={getCurrentThreadSettings().agentRouterApiKey ?? ''}
-                      onChange={(e) => updateCurrentThreadSettings({ agentRouterApiKey: e.target.value })}
-                      placeholder="sk-..."
-                      className="settings-input"
-                    />
-                    <button
-                      type="button"
-                      className="input-icon-button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      title={showApiKey ? 'Скрыть API ключ' : 'Показать API ключ'}
-                    >
-                      {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="setting-field">
-                  <label className="setting-label" htmlFor="agentRouterModel">Модель</label>
-                  <select
-                    id="agentRouterModel"
-                    value={getCurrentThreadSettings().agentRouterModel ?? ''}
-                    onChange={(e) => updateCurrentThreadSettings({ agentRouterModel: e.target.value })}
-                    className="settings-select"
-                    disabled={isLoadingAgentModels || !(getCurrentThreadSettings().agentRouterBaseUrl && getCurrentThreadSettings().agentRouterApiKey)}
+                  <button
+                    type="button"
+                    className="input-icon-button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    title={showApiKey ? 'Скрыть API ключ' : 'Показать API ключ'}
                   >
-                    {isLoadingAgentModels ? (
-                      <option>Загрузка моделей...</option>
-                    ) : agentAvailableModels.length > 0 ? (
-                      agentAvailableModels.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))
-                    ) : (
-                      <option disabled>Укажите Base URL и API Key для загрузки моделей</option>
-                    )}
-                  </select>
+                    {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
+                  </button>
                 </div>
-              </>
-            )}
+              </div>
+
+              <div className="setting-field">
+                <label className="setting-label" htmlFor="agentRouterModel">Модель</label>
+                <select
+                  id="agentRouterModel"
+                  value={currentSettings.agentRouterModel ?? ''}
+                  onChange={(e) => updateCurrentThreadSettings({ agentRouterModel: e.target.value })}
+                  className="settings-select"
+                  disabled={isLoadingAgentModels || !(currentSettings.agentRouterBaseUrl && currentSettings.agentRouterApiKey)}
+                >
+                  {isLoadingAgentModels ? (
+                    <option>Загрузка моделей...</option>
+                  ) : agentAvailableModels.length > 0 ? (
+                    agentAvailableModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>Укажите Base URL и API Key для загрузки моделей</option>
+                  )}
+                </select>
+              </div>
+            </div>
           </div>
 
           <hr className="settings-separator" />
@@ -355,7 +357,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 className="settings-input"
                 min="0"
                 max="50"
-                value={getCurrentThreadSettings().historyMessageCount}
+                value={currentSettings.historyMessageCount}
                 onChange={(e) => {
                   const value = parseInt(e.target.value, 10);
                   updateCurrentThreadSettings({
@@ -364,7 +366,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 }}
               />
             </div>
-            {getCurrentThreadSettings().historyMessageCount === 0 && (
+            {currentSettings.historyMessageCount === 0 && (
               <div className="setting-warning">
                 Внимание: при значении 0 история сообщений не будет учитываться. Бот будет видеть только системный промпт и текущее сообщение.
               </div>
