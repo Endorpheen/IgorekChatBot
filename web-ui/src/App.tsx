@@ -19,6 +19,7 @@ import ChatPanel from './components/ChatPanel';
 import Footer from './components/Footer';
 import SettingsPanel from './components/SettingsPanel';
 import ImageGenerationPanel from './components/ImageGenerationPanel';
+import McpPanel from './components/McpPanel';
 
 interface PendingAttachment {
   id: string;
@@ -68,6 +69,7 @@ const AppContent = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const isImagesRoute = location.pathname.startsWith('/images');
+  const isMcpRoute = location.pathname.startsWith('/mcp');
 
   const { isRecording, toggleRecognition } = useSpeechRecognition({
     onResult: (transcript) => setInput(prev => prev + ' ' + transcript),
@@ -333,16 +335,16 @@ const AppContent = () => {
   const messagesToRender = useMemo(() => messages.filter(msg => msg.threadId === threadId), [messages, threadId]);
 
   useEffect(() => {
-    if (location.pathname === '/' || isImagesRoute) {
+    if (location.pathname === '/' || isImagesRoute || isMcpRoute) {
       return;
     }
     navigate('/', { replace: true });
-  }, [location.pathname, isImagesRoute, navigate]);
+  }, [location.pathname, isImagesRoute, isMcpRoute, navigate]);
 
   return (
     <>
       <div className="app-root">
-        <div className={`app-shell${isImagesRoute ? ' image-page-shell' : ''}`}>
+        <div className={`app-shell${isImagesRoute || isMcpRoute ? ' image-page-shell' : ''}`}>
           {isImagesRoute ? (
             <>
               <div className="image-page-header">
@@ -363,10 +365,28 @@ const AppContent = () => {
                   </button>
                 </div>
               </div>
-              <ImageGenerationPanel
-                onRequireKeySetup={() => setIsSettingsOpen(true)}
-                refreshKeySignal={keyRefreshToken}
-              />
+              <div className="page-content">
+                <ImageGenerationPanel
+                  onRequireKeySetup={() => setIsSettingsOpen(true)}
+                  refreshKeySignal={keyRefreshToken}
+                />
+              </div>
+              <Footer openSettings={() => setIsSettingsOpen(true)} />
+            </>
+          ) : isMcpRoute ? (
+            <>
+              <div className="image-page-header">
+                <button
+                  type="button"
+                  className="image-back-button"
+                  onClick={() => navigate('/')}
+                >
+                  ← В чат
+                </button>
+              </div>
+              <div className="page-content">
+                <McpPanel />
+              </div>
               <Footer openSettings={() => setIsSettingsOpen(true)} />
             </>
           ) : (
@@ -381,6 +401,7 @@ const AppContent = () => {
                 setIsMenuOpen={setIsMenuOpen}
                 showImageNavigation
                 onNavigateToImages={() => navigate('/images')}
+                onNavigateToMcp={() => navigate('/mcp')}
               />
               <div className="grid">
                 <ThreadsPanel

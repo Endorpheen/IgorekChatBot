@@ -12,10 +12,12 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.features.chat.router import router as chat_router
 from app.features.image_analysis.router import router as image_analysis_router
 from app.features.image_generation.router import router as image_generation_router
+from app.features.mcp.router import router as mcp_router
 from app.features.root.router import router as root_router
 from app.features.seo.router import router as seo_router
 from app.features.uploads.cleaner import start_cleanup_task, stop_cleanup_task
@@ -62,11 +64,14 @@ def create_app() -> FastAPI:
 
     setup_cors(app, settings)
 
+    app.mount("/guide", StaticFiles(directory="/app/docs/build", html=True), name="guide")
+
     app.include_router(chat_router)
     app.include_router(image_analysis_router)
     app.include_router(image_generation_router)
     app.include_router(uploads_router)
     app.include_router(seo_router)
+    app.include_router(mcp_router)
     app.include_router(root_router)
 
     register_webui(app, settings)

@@ -1,0 +1,20 @@
+/**
+ * Copyright (c) 2024. All rights reserved.
+ *
+ * @company self
+ * @author Andrei
+ * @role Crush
+ * @created 2024-10-16
+ */
+
+.features {
+  display: flex;
+  align-items: center;
+  padding: 2rem 0;
+  width: 100%;
+}
+
+.featureSvg {
+  height: 200px;
+  width: 200px;
+}

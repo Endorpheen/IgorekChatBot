@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, Power, VolumeX, Volume2, MessageSquareText, MessageSquareOff, Menu, ImagePlus } from 'lucide-react';
+import { Terminal, Power, VolumeX, Volume2, MessageSquareText, MessageSquareOff, Menu, ImagePlus, Database } from 'lucide-react';
 import { clearMessages } from '../storage/messagesStorage';
 
 interface HeaderProps {
@@ -11,6 +11,7 @@ interface HeaderProps {
   setIsMenuOpen: (isOpen: boolean) => void;
   onNavigateToImages?: () => void;
   showImageNavigation?: boolean;
+  onNavigateToMcp?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ const Header: React.FC<HeaderProps> = ({
   setIsMenuOpen,
   onNavigateToImages,
   showImageNavigation,
+  onNavigateToMcp,
 }) => {
   return (
     <header className="app-header">
@@ -33,6 +35,17 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       <div className="app-header__actions">
+        {onNavigateToMcp && (
+          <button
+            type="button"
+            className="image-gen-button"
+            onClick={onNavigateToMcp}
+            title="MCP Obsidian"
+          >
+            <Database className="icon" />
+            <span className="desktop-only">MCP</span>
+          </button>
+        )}
         {showImageNavigation && onNavigateToImages && (
           <button
             type="button"

@@ -245,7 +245,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   };
 };
 
-export const callAgent = async (payload: { message: string; thread_id?: string; user_id: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
+export const callAgent = async (payload: { message: string; thread_id?: string; user_id?: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
   const systemPrompt = (typeof window !== 'undefined' ? localStorage.getItem('systemPrompt') : null)?.trim();
 
   const messages: AgentApiMessage[] = [];
@@ -283,12 +283,20 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
     body: JSON.stringify(requestBody),
   });
 
+  console.log('[CALL AGENT] Response status:', response.status);
+  console.log('[CALL AGENT] Response ok:', response.ok);
+
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('[CALL AGENT] Error response:', errorText);
     throw new Error(`Agent API error: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as ChatResponse;
+  console.log('[CALL AGENT] Parsed response data:', data);
+  console.log('[CALL AGENT] Response status field:', data.status);
+  console.log('[CALL AGENT] Response response field:', data.response);
+
   return data;
 };
 
@@ -544,3 +552,52 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
     return `Ошибка: ${error}`;
   }
 };
+
+export const mcpSearch = async (payload: { query: string; [key: string]: any }): Promise<any> => {
+  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
+  if (!token) {
+    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
+  }
+
+  const response = await fetch(buildApiUrl('/api/mcp/search'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...buildCsrfHeader(),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json();
+};
+
+export const mcpFetch = async (payload: { id: string; [key: string]: any }): Promise<any> => {
+  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
+  if (!token) {
+    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
+  }
+
+  const response = await fetch(buildApiUrl('/api/mcp/fetch'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...buildCsrfHeader(),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json();
+};
+

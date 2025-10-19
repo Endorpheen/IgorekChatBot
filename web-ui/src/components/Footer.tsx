@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, Github } from 'lucide-react';
 import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
 
 interface FooterProps {
@@ -22,12 +22,13 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
           </div>
         </div>
         <a
-          className="github-link-button"
+          className="settings-button"
           href="https://github.com/Endorpheen/IgorekChatBot"
           target="_blank"
           rel="noreferrer noopener"
         >
-          GitHub
+          <Github className="icon" />
+          <span>GitHub</span>
         </a>
         <button
           type="button"
@@ -39,20 +40,23 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
           Настройки
         </button>
       </div>
-      <div className="desktop-widget">
-        <ElevenLabsConvaiWidget />
-      </div>
-      <div className="support-project">
-        <img src="/web-ui/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
-        <span
-          className="support-text"
-          onClick={() => {
-            navigator.clipboard.writeText('0x5d36725941870C927473d2ba3eEBDe6613185b78');
-            alert('Адрес крипто кошелька MetaMask скопирован в буфер, будем рады Вашей поддержке 😊');
-          }}
-        >
-          Поддержать проект
-        </span>
+
+      <div className="footer-secondary">
+        <div className="desktop-widget">
+          <ElevenLabsConvaiWidget />
+        </div>
+        <div className="support-project">
+          <img src="/web-ui/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
+          <span
+            className="support-text"
+            onClick={() => {
+              navigator.clipboard.writeText('0x5d36725941870C927473d2ba3eEBDe6613185b78');
+              alert('Адрес крипто кошелька MetaMask скопирован в буфер, будем рады Вашей поддержке 😊');
+            }}
+          >
+            Поддержать проект
+          </span>
+        </div>
       </div>
     </footer>
   );

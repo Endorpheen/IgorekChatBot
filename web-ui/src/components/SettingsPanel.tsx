@@ -100,78 +100,98 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-content">
-          <ImageGenerationSettings isOpen={isSettingsOpen} onKeyChange={onImageKeyChange} />
+          <div className="settings-section">
+            <ImageGenerationSettings isOpen={isSettingsOpen} onKeyChange={onImageKeyChange} />
+          </div>
 
-          <div className="setting-group">
-            <label className="setting-label">
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <h4 className="settings-section-title">Настройки OpenRouter</h4>
+              <p className="settings-section-subtitle">
+                Настройка применяется только к текущему треду: {threadNames[threadId] ?? 'Без названия'}
+              </p>
+            </div>
+
+            <label className="setting-toggle">
               <input
                 type="checkbox"
                 checked={getCurrentThreadSettings().openRouterEnabled}
                 onChange={(e) => updateCurrentThreadSettings({ openRouterEnabled: e.target.checked })}
               />
-              Использовать OpenRouter (облачная модель)
+              <span>Использовать OpenRouter (облачная модель)</span>
             </label>
-            <div className="setting-description">
-              Настройка применяется только к текущему треду: {threadNames[threadId] ?? 'Без названия'}
-            </div>
+
+            {getCurrentThreadSettings().openRouterEnabled && (
+              <>
+                <div className="setting-field">
+                  <label className="setting-label" htmlFor="openRouterApiKey">
+                    API Key OpenRouter
+                  </label>
+                  <div className="input-with-icon">
+                    <input
+                      id="openRouterApiKey"
+                      type={showApiKey ? 'text' : 'password'}
+                      value={getCurrentThreadSettings().openRouterApiKey}
+                      onChange={(e) => updateCurrentThreadSettings({ openRouterApiKey: e.target.value })}
+                      placeholder="sk-or-v1-..."
+                      className="settings-input"
+                    />
+                    <button
+                      type="button"
+                      className="input-icon-button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      title={showApiKey ? 'Скрыть API ключ' : 'Показать API ключ'}
+                    >
+                      {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="setting-field">
+                  <label className="setting-label" htmlFor="openRouterModel">
+                    Модель
+                  </label>
+                  <select
+                    id="openRouterModel"
+                    value={getCurrentThreadSettings().openRouterModel}
+                    onChange={(e) => updateCurrentThreadSettings({ openRouterModel: e.target.value })}
+                    className="settings-select"
+                    disabled={isLoadingModels || !getCurrentThreadSettings().openRouterApiKey}
+                  >
+                    {isLoadingModels ? (
+                      <option>Загрузка моделей...</option>
+                    ) : availableModels.length > 0 ? (
+                      availableModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))
+                    ) : (
+                      <option disabled>Укажите API ключ для загрузки моделей</option>
+                    )}
+                  </select>
+                </div>
+              </>
+            )}
           </div>
 
-          {getCurrentThreadSettings().openRouterEnabled && (
-            <>
-              <div className="setting-group">
-                <label className="setting-label">API Key OpenRouter</label>
-                <div className="input-with-icon">
-                  <input
-                    type={showApiKey ? "text" : "password"}
-                    value={getCurrentThreadSettings().openRouterApiKey}
-                    onChange={(e) => updateCurrentThreadSettings({ openRouterApiKey: e.target.value })}
-                    placeholder="sk-or-v1-..."
-                    className="settings-input"
-                  />
-                  <button
-                    type="button"
-                    className="input-icon-button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    title={showApiKey ? "Скрыть API ключ" : "Показать API ключ"}
-                  >
-                    {showApiKey ? <EyeOff className="icon" /> : <Eye className="icon" />}
-                  </button>
-                </div>
-              </div>
+          <hr className="settings-separator" />
 
-              <div className="setting-group">
-                <label className="setting-label">Модель</label>
-                <select
-                  value={getCurrentThreadSettings().openRouterModel}
-                  onChange={(e) => updateCurrentThreadSettings({ openRouterModel: e.target.value })}
-                  className="settings-select"
-                  disabled={isLoadingModels || !getCurrentThreadSettings().openRouterApiKey}
-                >
-                  {isLoadingModels ? (
-                    <option>Загрузка моделей...</option>
-                  ) : availableModels.length > 0 ? (
-                    availableModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))
-                  ) : (
-                    <option disabled>Укажите API ключ для загрузки моделей</option>
-                  )}
-                </select>
-              </div>
-            </>
-          )}
-
-          <div className="setting-group">
-            <div className="flex items-center justify-between">
-              <label htmlFor="historyMessageCount" className="text-sm">
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <h4 className="settings-section-title">История сообщений</h4>
+              <p className="settings-section-subtitle">
+                Укажите, сколько последних сообщений использовать при генерации ответа.
+              </p>
+            </div>
+            <div className="setting-field">
+              <label className="setting-label" htmlFor="historyMessageCount">
                 Количество сообщений в истории
               </label>
               <input
                 type="number"
                 id="historyMessageCount"
-                className="w-1/2 p-2 border rounded bg-gray-700 text-white"
+                className="settings-input"
                 min="0"
                 max="50"
                 value={getCurrentThreadSettings().historyMessageCount}
@@ -190,19 +210,25 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             )}
           </div>
 
-          <div className="setting-group">
-            <div className="flex items-center gap-2">
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <h4 className="settings-section-title">Системный промпт</h4>
+              <p className="settings-section-subtitle">
+                Дополнительные инструкции для бота. Можно скрыть или сбросить при необходимости.
+              </p>
+            </div>
+            <div className="settings-inline-actions">
               <button
                 type="button"
                 className="settings-button"
                 onClick={() => setShowSystemPromptInput(!showSystemPromptInput)}
               >
-                Системный промпт
+                {showSystemPromptInput ? 'Скрыть поле' : 'Показать поле'}
               </button>
               {showSystemPromptInput && (
                 <button
                   type="button"
-                  className="settings-button"
+                  className="settings-button secondary"
                   onClick={() => {
                     setSystemPrompt('');
                     localStorage.removeItem('systemPrompt');
@@ -213,7 +239,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               )}
             </div>
             {showSystemPromptInput && (
-              <div className="system-prompt-container mt-2">
+              <div className="system-prompt-container">
                 <textarea
                   className="settings-textarea"
                   value={systemPrompt}
