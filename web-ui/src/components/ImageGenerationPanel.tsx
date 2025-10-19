@@ -27,6 +27,7 @@ import {
   fetchImageJobStatus,
   fetchProviderList,
   fetchProviderModels,
+  searchProviderModels,
   validateProviderKey,
 } from '../utils/api';
 import { getImageSessionId } from '../utils/session';
@@ -161,6 +162,10 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   const [modelId, setModelId] = useState<string | null>(storedStateRef.current.modelId);
   const [modelSearch, setModelSearch] = useState('');
   const [recommendedOnly, setRecommendedOnly] = useState(false);
+  const [searchResults, setSearchResults] = useState<ProviderModelSpec[] | null>(null);
+  const [isSearchingModels, setIsSearchingModels] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   const [prompt, setPrompt] = useState<string>(storedStateRef.current.prompt ?? '');
   const [width, setWidth] = useState<number | null>(storedStateRef.current.width ?? null);
@@ -181,7 +186,10 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
 
   const objectUrlRef = useRef<string | null>(null);
 
-  const selectedModel = useMemo(() => models.find(model => model.id === modelId) ?? null, [models, modelId]);
+  const selectedModel = useMemo(() => {
+    const source = searchResults ?? models;
+    return source.find(model => model.id === modelId) ?? null;
+  }, [searchResults, models, modelId]);
 
   const effectiveLimits = useMemo(() => {
     const limits = selectedModel?.limits ?? {};
@@ -230,18 +238,28 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
 
   const supportsMode = selectedModel?.capabilities?.supports_mode && (selectedModel.capabilities.modes?.length ?? 0) > 0;
 
-  const filteredModels = useMemo(() => {
-    const normalizedSearch = modelSearch.trim().toLowerCase();
-    return models.filter(model => {
-      if (recommendedOnly && !model.recommended) {
-        return false;
+  const searchActive = isSearchingModels || searchResults !== null;
+  const displayedModels = useMemo(() => {
+    let list = searchActive ? (searchResults ?? []) : models;
+
+    if (!searchActive) {
+      const normalizedSearch = modelSearch.trim().toLowerCase();
+      if (normalizedSearch) {
+        list = list.filter(model => {
+          return model.display_name.toLowerCase().includes(normalizedSearch) || model.id.toLowerCase().includes(normalizedSearch);
+        });
       }
-      if (!normalizedSearch) {
-        return true;
-      }
-      return model.display_name.toLowerCase().includes(normalizedSearch) || model.id.toLowerCase().includes(normalizedSearch);
-    });
-  }, [models, modelSearch, recommendedOnly]);
+    }
+
+    if (recommendedOnly) {
+      list = list.filter(model => model.recommended);
+    }
+
+    return list;
+  }, [searchActive, searchResults, models, modelSearch, recommendedOnly]);
+  useEffect(() => {
+    console.log('render displayedModels:', displayedModels, 'searchResults:', searchResults);
+  }, [displayedModels, searchResults]);
 
   const statusBadgeClass = useMemo(() => {
     const status = jobStatus?.status;
@@ -263,6 +281,12 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   }
   return downloadUrl.startsWith('http') ? downloadUrl : buildApiUrl(downloadUrl);
 }, [downloadUrl]);
+
+  const isLoadingModelOptions = modelsLoading || isSearchingModels;
+  const noModelsAvailable = !isLoadingModelOptions && displayedModels.length === 0;
+  const emptyModelsMessage = searchResults !== null
+    ? (searchError ? `Ошибка поиска: ${searchError}` : 'По запросу ничего не найдено.')
+    : 'Нет моделей, удовлетворяющих критериям.';
 
   const updateStoredState = useCallback((partial: Partial<StoredImageGenerationState>) => {
     const nextState: StoredImageGenerationState = {
@@ -286,6 +310,16 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   useEffect(() => {
     updateStoredState({});
   }, [prompt, width, height, steps, cfg, seed, mode, jobId, downloadUrl, providerId, modelId, updateStoredState]);
+
+  useEffect(() => {
+    const source = searchResults ?? models;
+    if (source.length === 0) {
+      return;
+    }
+    if (!modelId || !source.some(model => model.id === modelId)) {
+      setModelId(source[0]?.id ?? null);
+    }
+  }, [searchResults, models, modelId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -539,6 +573,59 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   const providerEnabled = enabledProviders[providerId] ?? isProviderEnabled(providerId);
   const keyAvailable = providerEnabled && (providerKeys[providerId]?.hasKey ?? false);
 
+  useEffect(() => {
+    const trimmedSearch = modelSearch.trim();
+    const isReplicate = providerId.toLowerCase() === 'replicate';
+
+    if (!isReplicate || !keyAvailable || trimmedSearch.length < 2) {
+      setSearchResults(null);
+      setIsSearchingModels(false);
+      setSearchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = ++searchRequestIdRef.current;
+    const timer = window.setTimeout(() => {
+      (async () => {
+        setIsSearchingModels(true);
+        setSearchError(null);
+        try {
+          const apiKey = await readProviderApiKey(providerId);
+          if (cancelled || searchRequestIdRef.current !== requestId) {
+            return;
+          }
+          const response = await searchProviderModels(providerId, apiKey, trimmedSearch, { limit: 50 });
+          console.log('Search results:', response);
+          if (!cancelled && searchRequestIdRef.current === requestId) {
+            setSearchResults(response.models ?? []);
+          }
+        } catch (error) {
+          console.error('Не удалось выполнить поиск моделей:', error);
+          if (!cancelled && searchRequestIdRef.current === requestId) {
+            setSearchResults([]);
+            if (error instanceof ApiError) {
+              setSearchError(error.message);
+            } else if (error instanceof Error) {
+              setSearchError(error.message);
+            } else {
+              setSearchError('Не удалось выполнить поиск моделей');
+            }
+          }
+        } finally {
+          if (!cancelled && searchRequestIdRef.current === requestId) {
+            setIsSearchingModels(false);
+          }
+        }
+      })();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [modelSearch, providerId, keyAvailable, readProviderApiKey]);
+
   const handleRefreshModels = async () => {
     try {
       await deleteCatalog(providerId);
@@ -697,6 +784,9 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
                 setModelSearch('');
                 setRecommendedOnly(false);
                 setModelId(null);
+                setSearchResults(null);
+                setSearchError(null);
+                setIsSearchingModels(false);
               }}
             >
               {providerList.map(provider => (
@@ -712,7 +802,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
                 id="imageProviderRefresh"
                 className="settings-button secondary"
                 onClick={handleRefreshModels}
-                disabled={modelsLoading || !keyAvailable}
+                disabled={isLoadingModelOptions || !keyAvailable}
               >
                 <RefreshCcw className="icon" />
                 Обновить модели
@@ -750,18 +840,22 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
         </div>
 
         <div className="model-list">
-          {modelsLoading && <div className="model-loading"><Loader2 className="icon spin" /> Загрузка моделей...</div>}
-          {!modelsLoading && filteredModels.length === 0 && (
-            <div className="model-empty">Нет моделей, удовлетворяющих критериям.</div>
+          {isLoadingModelOptions && (
+            <div className="model-loading">
+              <Loader2 className="icon spin" /> {isSearchingModels ? 'Поиск моделей...' : 'Загрузка моделей...'}
+            </div>
           )}
-          {!modelsLoading && filteredModels.length > 0 && (
+          {noModelsAvailable && (
+            <div className="model-empty">{emptyModelsMessage}</div>
+          )}
+          {!isLoadingModelOptions && displayedModels.length > 0 && (
             <select
               className="settings-select"
               value={modelId ?? ''}
               onChange={(event) => setModelId(event.target.value)}
             >
               <option value="" disabled>Выберите модель</option>
-              {filteredModels.map(model => (
+              {displayedModels.map(model => (
                 <option key={model.id} value={model.id}>
                   {model.display_name}
                   {model.recommended ? ' ★' : ''}
@@ -800,7 +894,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
                 setWidth(option.width);
                 setHeight(option.height);
               }}
-              disabled={isGenerating || modelsLoading || !selectedModel}
+              disabled={isGenerating || isLoadingModelOptions || !selectedModel}
             >
               {sizeOptions.map(option => (
                 <option key={option.id} value={option.id}>

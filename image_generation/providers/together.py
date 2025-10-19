@@ -144,6 +144,9 @@ class TogetherAdapter:
 
         return models
 
+    def search_models(self, query: str, key: str, *, limit: int = 50) -> List[ProviderModelSpec]:  # noqa: D401
+        raise ProviderError(ProviderErrorCode.BAD_REQUEST, "Поиск моделей для Together не поддерживается")
+
     def validate_params(
         self,
         model_id: str,

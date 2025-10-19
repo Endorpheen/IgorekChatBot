@@ -88,6 +88,43 @@ class ReplicateAdapter:
         models.sort(key=lambda spec: (spec.get("recommended") is not True, spec.get("display_name", spec["id"])) )
         return models
 
+    def search_models(self, query: str, key: str, *, limit: int = 50) -> List[ProviderModelSpec]:  # noqa: D401
+        query = (query or "").strip()
+        if not query:
+            return []
+
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+        }
+
+        aggregated: Dict[str, ProviderModelSpec] = {}
+        max_total = max(1, min(limit, 200))
+        next_url: Optional[str] = f"{_BASE_URL}/models?{urlencode({'search': query, 'limit': min(50, max_total)})}"
+        page = 0
+        max_pages = 5
+
+        while next_url and page < max_pages and len(aggregated) < max_total:
+            payload = self._request_json(next_url, headers)
+            for item in self._extract_items(payload):
+                self._add_model_candidate(item, headers, aggregated, from_collection=False)
+                if len(aggregated) >= max_total:
+                    break
+            next_url = self._extract_next(payload)
+            page += 1
+
+        models = list(aggregated.values())
+        normalized_query = query.lower()
+        models = [
+            spec for spec in models
+            if normalized_query in (spec.get("display_name") or "").lower()
+            or normalized_query in spec.get("id", "").lower()
+        ]
+        models.sort(key=lambda spec: (spec.get("recommended") is not True, spec.get("display_name", spec["id"])))
+        if len(models) > max_total:
+            models = models[:max_total]
+        return models
+
     def validate_params(
         self,
         model_id: str,

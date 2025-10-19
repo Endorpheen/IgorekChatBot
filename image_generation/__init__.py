@@ -350,6 +350,31 @@ class ImageGenerationManager:
             raise ImageGenerationError("Неизвестный провайдер", status_code=400, error_code="provider_unknown")
         return await self._load_models(provider_id, api_key, force=force)
 
+    async def search_provider_models(
+        self,
+        provider_id: str,
+        api_key: str,
+        query: str,
+        *,
+        limit: int = 50,
+    ) -> List[ProviderModelSpec]:
+        provider_id = provider_id.lower().strip()
+        if provider_id not in self.registry:
+            raise ImageGenerationError("Неизвестный провайдер", status_code=400, error_code="provider_unknown")
+        search_query = query.strip()
+        if not search_query:
+            raise ImageGenerationError("Поисковый запрос не может быть пустым", status_code=400, error_code="query_empty")
+        if provider_id != "replicate":
+            raise ImageGenerationError("Поиск поддерживается только для Replicate", status_code=400, error_code="search_not_supported")
+
+        adapter = self._get_adapter(provider_id)
+        try:
+            models = adapter.search_models(search_query, api_key, limit=limit)
+        except ProviderError as exc:
+            raise self._map_provider_error(exc) from exc
+
+        return copy.deepcopy(models)
+
     def list_providers(self) -> List[Dict[str, Any]]:
         providers = []
         for entry in self.registry.values():

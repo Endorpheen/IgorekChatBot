@@ -271,3 +271,20 @@ async def get_image_providers(
 
     response_models = [ProviderModelSpecResponse(**model) for model in models]
     return ProviderModelsResponse(provider=provider, models=response_models)
+
+
+@router.get("/image/providers/search", response_model=ProviderModelsResponse)
+async def search_image_provider_models(
+    request: Request,
+    query: str = Query(..., min_length=1, description="Строка поиска по моделям провайдера"),
+    provider: str = Query("replicate", description="Идентификатор провайдера (по умолчанию replicate)"),
+    limit: int = Query(50, ge=1, le=200, description="Ограничение на количество результатов"),
+) -> ProviderModelsResponse:
+    api_key = _extract_image_key(request)
+    try:
+        models = await image_manager.search_provider_models(provider, api_key, query, limit=limit)
+    except ImageGenerationError as exc:
+        raise image_error_to_http(exc)
+
+    response_models = [ProviderModelSpecResponse(**model) for model in models]
+    return ProviderModelsResponse(provider=provider.lower().strip(), models=response_models)

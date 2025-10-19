@@ -416,6 +416,35 @@ export const fetchProviderModels = async (providerId: string, apiKey: string, op
   return response.json() as Promise<ProviderModelsResponse>;
 };
 
+export const searchProviderModels = async (
+  providerId: string,
+  apiKey: string,
+  query: string,
+  options?: { limit?: number },
+): Promise<ProviderModelsResponse> => {
+  const url = new URL(buildApiUrl('/image/providers/search'));
+  url.searchParams.set('provider', providerId);
+  url.searchParams.set('query', query);
+  if (options?.limit) {
+    url.searchParams.set('limit', String(options.limit));
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-Image-Key': apiKey,
+      'X-Client-Session': getImageSessionId(),
+    },
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<ProviderModelsResponse>;
+};
+
 interface UploadImagesParams {
   files: File[];
   threadId: string;
@@ -600,4 +629,3 @@ export const mcpFetch = async (payload: { id: string; [key: string]: any }): Pro
 
   return response.json();
 };
-
