@@ -22,6 +22,7 @@ from app.features.root.router import router as root_router
 from app.features.seo.router import router as seo_router
 from app.features.uploads.cleaner import start_cleanup_task, stop_cleanup_task
 from app.features.uploads.router import router as uploads_router
+from app.features.providers.agentrouter import router as agentrouter_router
 from app.logging import get_logger, setup_logging
 from app.middlewares.cors import setup_cors
 from app.settings import Settings, ensure_upload_directory, get_settings
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(uploads_router)
     app.include_router(seo_router)
     app.include_router(mcp_router)
+    app.include_router(agentrouter_router)
     app.include_router(root_router)
 
     register_webui(app, settings)

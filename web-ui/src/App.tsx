@@ -124,7 +124,20 @@ const AppContent = () => {
   const { audioRef, sendAudioRef } = useAudioPlayer({ musicMuted });
 
   const getCurrentThreadSettings = (): ThreadSettings => {
-    return threadSettings[threadId] || { openRouterEnabled: false, openRouterApiKey: '', openRouterModel: 'openai/gpt-4o-mini', historyMessageCount: 5 };
+    return threadSettings[threadId] || {
+      openRouterEnabled: false,
+      openRouterApiKey: '',
+      openRouterModel: 'openai/gpt-4o-mini',
+      historyMessageCount: 5,
+
+      // Chat provider selection (default OpenRouter)
+      chatProvider: 'openrouter',
+
+      // AgentRouter defaults
+      agentRouterBaseUrl: '',
+      agentRouterApiKey: '',
+      agentRouterModel: 'openai/gpt-4o-mini',
+    };
   };
 
   const updateCurrentThreadSettings = (updates: Partial<ThreadSettings>) => {
@@ -202,8 +215,9 @@ const AppContent = () => {
 
     const attachmentsToSend = [...pendingAttachments];
     const currentSettings = getCurrentThreadSettings();
-    const userApiKey = currentSettings.openRouterApiKey;
-    const selectedModel = currentSettings.openRouterModel;
+    const provider = currentSettings.chatProvider ?? 'openrouter';
+    const userApiKey = provider === 'agentrouter' ? (currentSettings.agentRouterApiKey ?? '') : currentSettings.openRouterApiKey;
+    const selectedModel = provider === 'agentrouter' ? (currentSettings.agentRouterModel ?? '') : currentSettings.openRouterModel;
     const historyMessages = messages.filter(msg => msg.threadId === threadId);
 
     if (trimmed) {
@@ -235,14 +249,23 @@ const AppContent = () => {
 
     try {
       if (shouldSendText) {
-        const payload = {
+        const payload: any = {
           message: trimmed,
           thread_id: threadId,
           user_id: agentUserId,
           history: historyMessages,
-          openRouterApiKey: userApiKey,
-          openRouterModel: selectedModel,
         };
+
+        if ((currentSettings.chatProvider ?? 'openrouter') === 'agentrouter') {
+          payload.providerType = 'agentrouter';
+          payload.agentRouterApiKey = currentSettings.agentRouterApiKey;
+          payload.agentRouterModel = currentSettings.agentRouterModel;
+          payload.agentRouterBaseUrl = currentSettings.agentRouterBaseUrl;
+        } else {
+          payload.providerType = 'openrouter';
+          payload.openRouterApiKey = currentSettings.openRouterApiKey;
+          payload.openRouterModel = currentSettings.openRouterModel;
+        }
         try {
           const response = await callAgent(payload);
           persistMessage({

@@ -23,6 +23,14 @@ export interface ThreadSettings {
   openRouterModel: string;
   historyMessageCount: number;
   threadId?: string;
+
+  // Chat provider selection
+  chatProvider?: 'openrouter' | 'agentrouter';
+
+  // AgentRouter settings (OpenAI-compatible)
+  agentRouterBaseUrl?: string;
+  agentRouterApiKey?: string;
+  agentRouterModel?: string;
 }
 
 export interface ThreadSettingsMap {

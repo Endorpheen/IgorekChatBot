@@ -24,8 +24,17 @@ class ChatRequest(BaseModel):
     message: str | None = None
     thread_id: str | None = None
     history: list | None = None
+
+    # OpenRouter (backward-compatible)
     open_router_api_key: str | None = Field(default=None, alias="openRouterApiKey")
     open_router_model: str | None = Field(default=None, alias="openRouterModel")
+
+    # AgentRouter (OpenAI-compatible)
+    provider_type: Literal["openrouter", "agentrouter"] | None = Field(default=None, alias="providerType")
+    agent_router_base_url: str | None = Field(default=None, alias="agentRouterBaseUrl")
+    agent_router_api_key: str | None = Field(default=None, alias="agentRouterApiKey")
+    agent_router_model: str | None = Field(default=None, alias="agentRouterModel")
+
     messages: list[ChatMessagePayload] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
@@ -42,6 +51,8 @@ async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
     log_payload = payload.model_dump(by_alias=True)
     if log_payload.get("openRouterApiKey"):
         log_payload["openRouterApiKey"] = "***masked***"
+    if log_payload.get("agentRouterApiKey"):
+        log_payload["agentRouterApiKey"] = "***masked***"
     logger.info("[CHAT ENDPOINT] Входящий payload: %s", log_payload)
 
     message = (payload.message or "").strip()
@@ -57,17 +68,36 @@ async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
     if not message and not incoming_messages:
         raise HTTPException(status_code=400, detail="Пустое сообщение недопустимо")
 
+    # Определяем провайдера и параметры
+    provider = (payload.provider_type or "openrouter").strip().lower()
+    if provider not in ("openrouter", "agentrouter"):
+        provider = "openrouter"
+
+    effective_api_key: Optional[str]
+    effective_model: Optional[str]
+    agent_base_url: Optional[str] = None
+
+    if provider == "agentrouter":
+        effective_api_key = payload.agent_router_api_key
+        effective_model = payload.agent_router_model
+        agent_base_url = (payload.agent_router_base_url or "").strip() or None
+    else:
+        effective_api_key = payload.open_router_api_key
+        effective_model = payload.open_router_model
+
     current_thread_id = payload.thread_id or str(uuid4())
     try:
         response_text = call_ai_query(
             prompt=message or None,
             history=payload.history,
-            user_api_key=payload.open_router_api_key,
-            user_model=payload.open_router_model,
+            user_api_key=effective_api_key,
+            user_model=effective_model,
             messages=incoming_messages,
             thread_id=current_thread_id,
+            provider_type=provider,
+            agent_base_url=agent_base_url,
         )
-        sanitized_model: Optional[str] = (payload.open_router_model or "").strip() if payload.open_router_model else None
+        sanitized_model: Optional[str] = (effective_model or "").strip() if effective_model else None
         if sanitized_model:
             THREAD_MODEL_OVERRIDES[current_thread_id] = sanitized_model
     except RuntimeError as exc:
