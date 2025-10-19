@@ -50,9 +50,17 @@ async def list_models(request: Request, base_url: str = Query(..., description="
         raise HTTPException(status_code=400, detail={"code": "missing_key", "message": "Authorization: Bearer <api_key> header is required"})
 
     target = f"{base_url.rstrip('/')}/models"
-    logger.info("[AgentRouter] Fetch models from %s", target)
+    headers = {"Authorization": auth, "Accept": "application/json"}
+    logger.info("[AgentRouter] Prepared request url=%s headers=%s", target, headers)
     try:
-        resp = requests.get(target, headers={"Authorization": auth, "Accept": "application/json"}, timeout=15)
+        resp = requests.get(target, headers=headers, timeout=15, allow_redirects=False)
+        logger.info(
+            "[AgentRouter] Response status=%s url=%s history=%s sent_headers=%s",
+            resp.status_code,
+            getattr(resp.request, "url", None),
+            [(r.status_code, getattr(r, "url", None)) for r in resp.history],
+            dict(getattr(resp.request, "headers", {})),
+        )
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail={"code": "agentrouter_timeout", "message": "Timeout fetching models"})
     except requests.exceptions.ConnectionError:

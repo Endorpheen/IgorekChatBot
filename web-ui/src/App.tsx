@@ -216,8 +216,9 @@ const AppContent = () => {
     const attachmentsToSend = [...pendingAttachments];
     const currentSettings = getCurrentThreadSettings();
     const provider = currentSettings.chatProvider ?? 'openrouter';
-    const userApiKey = provider === 'agentrouter' ? (currentSettings.agentRouterApiKey ?? '') : currentSettings.openRouterApiKey;
-    const selectedModel = provider === 'agentrouter' ? (currentSettings.agentRouterModel ?? '') : currentSettings.openRouterModel;
+    const _userApiKey = provider === 'agentrouter' ? (currentSettings.agentRouterApiKey ?? '') : currentSettings.openRouterApiKey;
+    const _selectedModel = provider === 'agentrouter' ? (currentSettings.agentRouterModel ?? '') : currentSettings.openRouterModel;
+    void [_userApiKey, _selectedModel];
     const historyMessages = messages.filter(msg => msg.threadId === threadId);
 
     if (trimmed) {
@@ -256,7 +257,7 @@ const AppContent = () => {
           history: historyMessages,
         };
 
-        if ((currentSettings.chatProvider ?? 'openrouter') === 'agentrouter') {
+        if (provider === 'agentrouter') {
           payload.providerType = 'agentrouter';
           payload.agentRouterApiKey = currentSettings.agentRouterApiKey;
           payload.agentRouterModel = currentSettings.agentRouterModel;
