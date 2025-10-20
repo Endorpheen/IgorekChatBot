@@ -6,18 +6,38 @@
     },
     "config": "5e9f5e1a"
   },
-  "/guide/docs-2ae": {
+  "/guide/docs-779": {
     "__comp": "5e95c892",
     "__context": {
       "plugin": "950c2254"
     }
   },
-  "/guide/docs-cb4": {
+  "/guide/docs-ca4": {
     "__comp": "a7bd4aaa",
     "version": "935f2afb"
   },
-  "/guide/docs-549": {
+  "/guide/docs-2b9": {
     "__comp": "a94703ab"
+  },
+  "/guide/docs/guide/architecture-576": {
+    "__comp": "17896441",
+    "content": "c640c600"
+  },
+  "/guide/docs/guide/features-b71": {
+    "__comp": "17896441",
+    "content": "9f585bad"
+  },
+  "/guide/docs/guide/mcp_integration-456": {
+    "__comp": "17896441",
+    "content": "10b6e598"
+  },
+  "/guide/docs/guide/overview-8ad": {
+    "__comp": "17896441",
+    "content": "f43d0be6"
+  },
+  "/guide/docs/guide/setup-c05": {
+    "__comp": "17896441",
+    "content": "83e4f5da"
   },
   "/guide/docs/intro-03c": {
     "__comp": "17896441",

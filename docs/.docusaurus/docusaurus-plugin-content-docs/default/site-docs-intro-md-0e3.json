@@ -11,5 +11,9 @@
   "tags": [],
   "version": "current",
   "frontMatter": {},
-  "sidebar": "tutorialSidebar"
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Интеграция MCP",
+    "permalink": "/guide/docs/guide/mcp_integration"
+  }
 }

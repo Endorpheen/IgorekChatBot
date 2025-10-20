@@ -10,6 +10,49 @@
   "docsSidebars": {
     "tutorialSidebar": [
       {
+        "type": "category",
+        "label": "guide",
+        "collapsible": true,
+        "collapsed": true,
+        "items": [
+          {
+            "type": "link",
+            "label": "Общий обзор",
+            "href": "/guide/docs/guide/overview",
+            "docId": "guide/overview",
+            "unlisted": false
+          },
+          {
+            "type": "link",
+            "label": "Установка и настройка",
+            "href": "/guide/docs/guide/setup",
+            "docId": "guide/setup",
+            "unlisted": false
+          },
+          {
+            "type": "link",
+            "label": "Архитектура проекта",
+            "href": "/guide/docs/guide/architecture",
+            "docId": "guide/architecture",
+            "unlisted": false
+          },
+          {
+            "type": "link",
+            "label": "Возможности",
+            "href": "/guide/docs/guide/features",
+            "docId": "guide/features",
+            "unlisted": false
+          },
+          {
+            "type": "link",
+            "label": "Интеграция MCP",
+            "href": "/guide/docs/guide/mcp_integration",
+            "docId": "guide/mcp_integration",
+            "unlisted": false
+          }
+        ]
+      },
+      {
         "type": "link",
         "label": "Intro",
         "href": "/guide/docs/intro",
@@ -19,6 +62,36 @@
     ]
   },
   "docs": {
+    "guide/architecture": {
+      "id": "guide/architecture",
+      "title": "Архитектура проекта",
+      "description": "Igorek ChatBot — модульная система, объединяющая backend, frontend и инфраструктуру для работы с AI-моделями.",
+      "sidebar": "tutorialSidebar"
+    },
+    "guide/features": {
+      "id": "guide/features",
+      "title": "Возможности",
+      "description": "Igorek ChatBot объединяет несколько ключевых модулей и инструментов.",
+      "sidebar": "tutorialSidebar"
+    },
+    "guide/mcp_integration": {
+      "id": "guide/mcp_integration",
+      "title": "Интеграция MCP",
+      "description": "Что такое MCP",
+      "sidebar": "tutorialSidebar"
+    },
+    "guide/overview": {
+      "id": "guide/overview",
+      "title": "Общий обзор",
+      "description": "Igorek ChatBot — это AI-ассистент с модульной архитектурой, объединяющий несколько ключевых направлений:",
+      "sidebar": "tutorialSidebar"
+    },
+    "guide/setup": {
+      "id": "guide/setup",
+      "title": "Установка и настройка",
+      "description": "Описание",
+      "sidebar": "tutorialSidebar"
+    },
     "intro": {
       "id": "intro",
       "title": "Intro",

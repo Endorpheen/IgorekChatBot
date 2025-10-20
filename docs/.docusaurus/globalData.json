@@ -8,8 +8,33 @@
           "label": "Next",
           "isLast": true,
           "path": "/guide/docs",
-          "mainDocId": "intro",
+          "mainDocId": "guide/overview",
           "docs": [
+            {
+              "id": "guide/architecture",
+              "path": "/guide/docs/guide/architecture",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "guide/features",
+              "path": "/guide/docs/guide/features",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "guide/mcp_integration",
+              "path": "/guide/docs/guide/mcp_integration",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "guide/overview",
+              "path": "/guide/docs/guide/overview",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "guide/setup",
+              "path": "/guide/docs/guide/setup",
+              "sidebar": "tutorialSidebar"
+            },
             {
               "id": "intro",
               "path": "/guide/docs/intro",
@@ -20,8 +45,8 @@
           "sidebars": {
             "tutorialSidebar": {
               "link": {
-                "path": "/guide/docs/intro",
-                "label": "intro"
+                "path": "/guide/docs/guide/overview",
+                "label": "guide/overview"
               }
             }
           }
