@@ -15,7 +15,6 @@ import {
 } from '../storage/togetherKeyStorage';
 import {
   deleteCatalog,
-  isStale,
   readCatalog,
   writeCatalog,
 } from '../storage/modelCatalogStorage';
@@ -257,10 +256,6 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
 
     return list;
   }, [searchActive, searchResults, models, modelSearch, recommendedOnly]);
-  useEffect(() => {
-    console.log('render displayedModels:', displayedModels, 'searchResults:', searchResults);
-  }, [displayedModels, searchResults]);
-
   const statusBadgeClass = useMemo(() => {
     const status = jobStatus?.status;
     if (!status) {
@@ -419,37 +414,51 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
       setModelId(null);
       return;
     }
+
     setModelsLoading(true);
+    setSearchError(null);
+    setSubmitError(null);
+
+    let cachedUsed = false;
     try {
-      const cached = await readCatalog(targetProviderId);
-      if (!force && cached && !isStale(cached)) {
-        setModels(cached.models);
-        if (!cached.models.some(model => model.id === modelId)) {
-          setModelId(cached.models[0]?.id ?? null);
+      if (!force) {
+        const cached = await readCatalog(targetProviderId);
+        if (cached && Array.isArray(cached.models) && cached.models.length > 0) {
+          const cachedModels = cached.models.map(model => ({ ...model, recommended: Boolean(model.recommended) }));
+          setModels(cachedModels);
+          if (!cachedModels.some(model => model.id === modelId)) {
+            setModelId(cachedModels[0]?.id ?? null);
+          }
+          cachedUsed = true;
         }
-        return;
       }
+
       const apiKey = await readProviderApiKey(targetProviderId);
       const fresh = await fetchProviderModels(targetProviderId, apiKey, { force });
-      const response = (fresh as ProviderModelsResponse).models;
-      setModels(response);
-      await writeCatalog(targetProviderId, response);
-      if (!response.some(model => model.id === modelId)) {
-        setModelId(response[0]?.id ?? null);
+      const responseModels = (fresh as ProviderModelsResponse).models ?? [];
+      const normalizedModels = responseModels.map(model => ({ ...model, recommended: Boolean(model.recommended) }));
+
+      setModels(normalizedModels);
+      await writeCatalog(targetProviderId, normalizedModels);
+      if (!normalizedModels.some(model => model.id === modelId)) {
+        setModelId(normalizedModels[0]?.id ?? null);
       }
+      cachedUsed = false;
     } catch (error) {
       console.error('Не удалось получить список моделей:', error);
-      if (error instanceof ApiError) {
-        setSubmitError(error.message);
-      } else if (error instanceof Error) {
-        setSubmitError(error.message);
-      } else {
-        setSubmitError('Не удалось загрузить список моделей');
+      if (!cachedUsed) {
+        if (error instanceof ApiError) {
+          setSubmitError(error.message);
+        } else if (error instanceof Error) {
+          setSubmitError(error.message);
+        } else {
+          setSubmitError('Не удалось загрузить список моделей');
+        }
       }
     } finally {
       setModelsLoading(false);
     }
-  }, [modelId, providerKeys, readProviderApiKey]);
+  }, [modelId, providerKeys, readProviderApiKey, enabledProviders]);
 
   useEffect(() => {
     if (!providerList.length) {
@@ -857,8 +866,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
               <option value="" disabled>Выберите модель</option>
               {displayedModels.map(model => (
                 <option key={model.id} value={model.id}>
-                  {model.display_name}
-                  {model.recommended ? ' ★' : ''}
+                  {`${model.recommended ? '★ ' : ''}${model.display_name}`}
                 </option>
               ))}
             </select>

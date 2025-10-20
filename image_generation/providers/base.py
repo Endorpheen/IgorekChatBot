@@ -99,6 +99,9 @@ class ImageProviderAdapter(Protocol):
     def search_models(self, query: str, key: str, *, limit: int = 50) -> List[ProviderModelSpec]:
         """Возвращает модели по поисковому запросу, если поддерживается."""
 
+    def get_featured_models(self, key: str) -> List[ProviderModelSpec]:
+        """Возвращает curated-набор моделей, которые нужно показывать в первую очередь."""
+
     def validate_params(
         self,
         model_id: str,

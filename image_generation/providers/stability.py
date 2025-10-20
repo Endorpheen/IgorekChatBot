@@ -112,6 +112,9 @@ class StabilityAdapter:
     def search_models(self, query: str, key: str, *, limit: int = 50) -> List[ProviderModelSpec]:  # noqa: D401
         raise ProviderError(ProviderErrorCode.BAD_REQUEST, "Поиск моделей для Stability не поддерживается")
 
+    def get_featured_models(self, key: str) -> List[ProviderModelSpec]:  # noqa: D401
+        return []
+
     def validate_params(
         self,
         model_id: str,
