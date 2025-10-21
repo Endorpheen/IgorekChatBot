@@ -110,7 +110,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to load AgentRouter models: ${response.status}`);
+        throw new Error(`Failed to load OpenAI Compatible models: ${response.status}`);
       }
 
       const data = await response.json();
@@ -121,7 +121,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         updateCurrentThreadSettings({ agentRouterModel: models[0] });
       }
     } catch (error) {
-      console.error('Failed to load AgentRouter models:', error);
+      console.error('Failed to load OpenAI Compatible models:', error);
       setAgentAvailableModels([]);
     } finally {
       setIsLoadingAgentModels(false);

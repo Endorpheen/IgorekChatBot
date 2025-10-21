@@ -49,9 +49,9 @@ def call_ai_query(
 
     if provider == "agentrouter":
         if not actual_api_key:
-            raise RuntimeError("Нет доступного AgentRouter API ключа")
+            raise RuntimeError("Нет доступного OpenAI Compatible API ключа")
         if not agent_base_url:
-            raise RuntimeError("AgentRouter base_url не задан")
+            raise RuntimeError("Не задан base_url для провайдера OpenAI Compatible")
     else:
         if not actual_api_key:
             raise RuntimeError("Нет доступного OpenRouter API ключа")

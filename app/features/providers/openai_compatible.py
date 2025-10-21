@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 
 from app.logging import get_logger
 
-router = APIRouter(prefix="/api/providers/agentrouter", tags=["AgentRouter"])
+router = APIRouter(prefix="/api/providers/agentrouter", tags=["OpenAI Compatible"])
 logger = get_logger()
 
 
@@ -42,7 +42,7 @@ def _normalize_models(payload: Any) -> List[str]:
 
 
 @router.get("/models")
-async def list_models(request: Request, base_url: str = Query(..., description="AgentRouter base URL")) -> Dict[str, List[str]]:
+async def list_models(request: Request, base_url: str = Query(..., description="OpenAI Compatible base URL")) -> Dict[str, List[str]]:
     auth = (request.headers.get("Authorization") or "").strip()
     if not base_url:
         raise HTTPException(status_code=400, detail={"code": "missing_base_url", "message": "Query param base_url is required"})
@@ -51,11 +51,11 @@ async def list_models(request: Request, base_url: str = Query(..., description="
 
     target = f"{base_url.rstrip('/')}/models"
     headers = {"Authorization": auth, "Accept": "application/json"}
-    logger.info("[AgentRouter] Prepared request url=%s headers=%s", target, headers)
+    logger.info("[OpenAI Compatible] Prepared request url=%s headers=%s", target, headers)
     try:
         resp = requests.get(target, headers=headers, timeout=15, allow_redirects=False)
         logger.info(
-            "[AgentRouter] Response status=%s url=%s history=%s sent_headers=%s",
+            "[OpenAI Compatible] Response status=%s url=%s history=%s sent_headers=%s",
             resp.status_code,
             getattr(resp.request, "url", None),
             [(r.status_code, getattr(r, "url", None)) for r in resp.history],
@@ -64,7 +64,7 @@ async def list_models(request: Request, base_url: str = Query(..., description="
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail={"code": "agentrouter_timeout", "message": "Timeout fetching models"})
     except requests.exceptions.ConnectionError:
-        raise HTTPException(status_code=502, detail={"code": "agentrouter_unreachable", "message": "Cannot connect to AgentRouter endpoint"})
+        raise HTTPException(status_code=502, detail={"code": "agentrouter_unreachable", "message": "Cannot connect to OpenAI Compatible endpoint"})
     except Exception as exc:
         raise HTTPException(status_code=500, detail={"code": "agentrouter_error", "message": str(exc)})
 
@@ -87,7 +87,7 @@ async def list_models(request: Request, base_url: str = Query(..., description="
         # Fallback: log raw payload length
         try:
             text = resp.text
-            logger.warning("[AgentRouter] Empty models parsed; raw length=%s", len(text))
+            logger.warning("[OpenAI Compatible] Empty models parsed; raw length=%s", len(text))
         except Exception:
             pass
     return {"models": models}
