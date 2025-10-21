@@ -197,7 +197,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 className="settings-select"
               >
                 <option value="openrouter">OpenRouter</option>
-                <option value="agentrouter">AgentRouter</option>
+                <option value="agentrouter">OpenAI Compatible</option>
               </select>
             </div>
           </div>
@@ -273,7 +273,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <div className="settings-section-header">
                 <h4 className="settings-section-title">Настройки OpenAI Compatible</h4>
                 <p className="settings-section-subtitle">
-                  Укажите параметры AgentRouter или совместимого сервиса для работы через OpenAI API.
+                  Укажите параметры OpenAI-совместимого сервиса для работы через OpenAI API.
                 </p>
               </div>
 
