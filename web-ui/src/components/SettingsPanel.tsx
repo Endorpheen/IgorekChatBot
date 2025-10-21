@@ -178,9 +178,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="settings-content">
-          <div className="settings-section">
-            <ImageGenerationSettings isOpen={isSettingsOpen} onKeyChange={onImageKeyChange} />
-          </div>
+          <ImageGenerationSettings isOpen={isSettingsOpen} onKeyChange={onImageKeyChange} />
 
           <div className="settings-section">
             <div className="settings-section-header">
