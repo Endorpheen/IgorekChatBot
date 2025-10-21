@@ -59,3 +59,6 @@ docs/guide/
 
 # Local production config (do not push)
 docker-compose.production.yml
+
+# Local agent instructions
+AGENTS.md
