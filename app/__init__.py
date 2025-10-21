@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.features.chat.router import router as chat_router
 from app.features.image_analysis.router import router as image_analysis_router
+from app.features.document_analysis import router as document_router
 from app.features.image_generation.router import router as image_generation_router
 from app.features.mcp.router import router as mcp_router
 from app.features.root.router import router as root_router
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
 
     app.include_router(chat_router)
     app.include_router(image_analysis_router)
+    app.include_router(document_router)
     app.include_router(image_generation_router)
     app.include_router(uploads_router)
     app.include_router(seo_router)

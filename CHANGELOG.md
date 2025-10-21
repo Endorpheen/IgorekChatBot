@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0] — 2025-10-22
+### Добавлено / Added
+- 🇷🇺 Поддержка загрузки и анализа документов (.pdf, .md, .txt, .docx).
+- 🇬🇧 Support for document uploads and analysis (.pdf, .md, .txt, .docx).
+- 🇷🇺 Новая логика UI: предзагрузка, визуальная индикация и отложенная отправка.
+- 🇬🇧 New UI flow with preloading, progress indication, and deferred submission.
+- 🇷🇺 Безопасная песочница для разбора документов (изоляция, MIME-валидация, запрет скриптов и макросов).
+- 🇬🇧 Secure sandbox for document parsing (isolation, MIME validation, no scripts/macros).
+- 🇷🇺 Унифицированы сообщения об ошибках под названием OpenAI Compatible.
+- 🇬🇧 Unified error messaging under the OpenAI Compatible naming.
+- 🇷🇺 Обновлён интерфейс и локализация уведомлений.
+- 🇬🇧 UI and localization refinements.
+
+### Исправлено / Fixed
+- 🇷🇺 Удалены остаточные упоминания AgentRouter в коде и логах.
+- 🇬🇧 Removed legacy AgentRouter references across the codebase.
+- 🇷🇺 Улучшена стабильность взаимодействия между контейнерами.
+- 🇬🇧 Improved stability of inter-container communication.
+
 ## [1.2.2] — 2025-10-22
 ### Добавлено / Added
 - 🇷🇺 Подготовлено пользовательское руководство «Как пользоваться Игорьком» с пошаговыми инструкциями по чату и генерации изображений.

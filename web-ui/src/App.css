@@ -464,6 +464,29 @@
   max-width: 100%;
 }
 
+.chat-document-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 255, 144, 0.25);
+  background: rgba(0, 0, 0, 0.4);
+  max-width: 100%;
+}
+
+.chat-document-message .icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  color: rgba(0, 255, 144, 0.85);
+}
+
+.chat-document-text {
+  font-size: 0.9rem;
+  color: rgba(224, 255, 245, 0.92);
+  word-break: break-word;
+}
+
 .message-actions {
   display: flex;
   gap: 0.5rem;
@@ -755,6 +778,11 @@
   width: 96px;
 }
 
+.attachment-preview-item--document {
+  width: 220px;
+  align-items: stretch;
+}
+
 .attachment-thumb {
   position: relative;
   width: 96px;
@@ -811,6 +839,74 @@
   color: rgba(255, 255, 255, 0.72);
   text-align: center;
   word-break: break-word;
+}
+
+.attachment-document-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 255, 144, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 12px -4px rgba(15, 118, 110, 0.45);
+}
+
+.attachment-document-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 255, 144, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.attachment-document-icon .icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.attachment-document-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.attachment-document-name {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-document-status {
+  font-size: 0.75rem;
+  color: rgba(224, 255, 245, 0.65);
+}
+
+.attachment-preview-item--document .attachment-remove {
+  position: static;
+  width: 32px;
+  height: 32px;
+}
+
+.attachment-spinner {
+  animation: spinner-rotate 1s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .chat-input-container .chat-input {

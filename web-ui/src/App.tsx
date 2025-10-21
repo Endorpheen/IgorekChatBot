@@ -4,7 +4,7 @@ import './App.css';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
-import { callAgent, uploadImagesForAnalysis } from './utils/api';
+import { analyzeDocument, callAgent, uploadImagesForAnalysis } from './utils/api';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -21,15 +21,66 @@ import SettingsPanel from './components/SettingsPanel';
 import ImageGenerationPanel from './components/ImageGenerationPanel';
 import McpPanel from './components/McpPanel';
 
+type AttachmentKind = 'image' | 'document';
+
 interface PendingAttachment {
   id: string;
   file: File;
-  previewUrl: string;
   name: string;
   mimeType: string;
+  size: number;
+  kind: AttachmentKind;
+  previewUrl?: string;
+  status: 'loading' | 'ready' | 'processing';
+  persisted?: boolean;
 }
 
 const MAX_PENDING_ATTACHMENTS = 4;
+const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const DOCUMENT_EXTENSIONS = new Set(['.pdf', '.md', '.txt', '.docx']);
+const DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/x-pdf',
+  'text/markdown',
+  'text/plain',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const getFileExtension = (file: File): string => {
+  const name = file.name ?? '';
+  const idx = name.lastIndexOf('.');
+  if (idx === -1) {
+    return '';
+  }
+  return name.slice(idx).toLowerCase();
+};
+
+const isDocumentFile = (file: File): boolean => {
+  const sanitizedExt = getFileExtension(file);
+  const mime = (file.type || '').toLowerCase();
+
+  if (!DOCUMENT_EXTENSIONS.has(sanitizedExt)) {
+    return false;
+  }
+
+  if (!mime) {
+    return true;
+  }
+
+  if (mime === 'application/octet-stream') {
+    return true;
+  }
+
+  if (DOCUMENT_MIME_TYPES.has(mime)) {
+    return true;
+  }
+
+  if (sanitizedExt === '.md' && mime === 'text/plain') {
+    return true;
+  }
+
+  return false;
+};
 
 const AppContent = () => {
   const {
@@ -85,13 +136,65 @@ const AppContent = () => {
     });
   };
 
+  const handlePendingDocuments = async (files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
+
+    if (pendingAttachments.filter(attachment => attachment.kind === 'document').length > 0) {
+      alert('Можно прикрепить только один документ за раз. Удалите предыдущий документ, чтобы загрузить новый.');
+      return;
+    }
+
+    if (pendingAttachments.some(attachment => attachment.kind === 'image')) {
+      alert('Документы и изображения не поддерживаются в одном запросе. Удалите изображения или отправьте их отдельно.');
+      return;
+    }
+
+    const docFile = files[0];
+
+    if (!isDocumentFile(docFile)) {
+      alert('Тип выбранного документа не поддерживается. Допустимы PDF, Markdown, TXT и DOCX.');
+      return;
+    }
+
+    if (docFile.size > MAX_DOCUMENT_SIZE_BYTES) {
+      alert('Размер документа превышает 10 МБ. Выберите файл поменьше.');
+      return;
+    }
+
+    const attachmentId = uuidv4();
+    setPendingAttachments(prev => [
+      ...prev,
+      {
+        id: attachmentId,
+        file: docFile,
+        name: docFile.name,
+        mimeType: docFile.type || 'application/octet-stream',
+        size: docFile.size,
+        kind: 'document',
+        status: 'loading',
+        persisted: false,
+      },
+    ]);
+
+    setTimeout(() => {
+      setPendingAttachments(prev => prev.map(item => (item.id === attachmentId ? { ...item, status: 'ready' } : item)));
+    }, 400);
+  };
+
   const handlePendingImages = async (files: File[]) => {
-    if (pendingAttachments.length >= MAX_PENDING_ATTACHMENTS) {
+    if (pendingAttachments.filter(attachment => attachment.kind === 'image').length >= MAX_PENDING_ATTACHMENTS) {
       alert(`Можно прикрепить не более ${MAX_PENDING_ATTACHMENTS} изображений за раз.`);
       return;
     }
 
-    const availableSlots = MAX_PENDING_ATTACHMENTS - pendingAttachments.length;
+    if (pendingAttachments.some(attachment => attachment.kind === 'document')) {
+      alert('Сначала отправьте или удалите загруженные документы, затем добавьте изображения.');
+      return;
+    }
+
+    const availableSlots = MAX_PENDING_ATTACHMENTS - pendingAttachments.filter(attachment => attachment.kind === 'image').length;
     const filesToProcess = files.slice(0, availableSlots);
     if (filesToProcess.length < files.length) {
       alert(`Добавлены только первые ${availableSlots} изображения. Остальные игнорированы.`);
@@ -105,6 +208,9 @@ const AppContent = () => {
         previewUrl: previews[index],
         name: file.name,
         mimeType: file.type,
+        size: file.size,
+        kind: 'image' as const,
+        status: 'ready' as const,
       }));
       setPendingAttachments(prev => [...prev, ...attachmentsToAdd]);
     } catch (error) {
@@ -117,8 +223,37 @@ const AppContent = () => {
     setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
   };
 
-  const { fileInputRef, handleImageUpload, triggerFileInput } = useImageUpload({
-    onImageUpload: handlePendingImages,
+  const handleSelectedFiles = async (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    const documentFiles = files.filter(file => !file.type.startsWith('image/') && isDocumentFile(file));
+
+    const unsupportedFiles = files.filter(
+      file => !imageFiles.includes(file) && !documentFiles.includes(file),
+    );
+
+    if (unsupportedFiles.length > 0) {
+      alert(`Некоторые файлы не были добавлены из-за неподдерживаемого формата: ${unsupportedFiles.map(file => file.name).join(', ')}`);
+    }
+
+    if (documentFiles.length > 1) {
+      alert('За один раз можно загрузить только один документ. Добавлен первый документ из выбранных.');
+    }
+
+    if (documentFiles.length > 0) {
+      await handlePendingDocuments(documentFiles.slice(0, 1));
+    }
+
+    if (imageFiles.length > 0) {
+      await handlePendingImages(imageFiles);
+    }
+  };
+
+  const { fileInputRef, handleImageUpload: handleAttachmentUpload, triggerFileInput } = useImageUpload({
+    onFilesSelected: handleSelectedFiles,
   });
 
   const { audioRef, sendAudioRef } = useAudioPlayer({ musicMuted });
@@ -195,24 +330,67 @@ const AppContent = () => {
     }
 
     const trimmed = input.trim();
-    const hasImages = pendingAttachments.length > 0;
+    const attachmentsToSend = [...pendingAttachments];
+    const documentAttachments = attachmentsToSend.filter(attachment => attachment.kind === 'document');
+    const imageAttachments = attachmentsToSend.filter(attachment => attachment.kind === 'image');
+    const hasDocuments = documentAttachments.length > 0;
+    const hasImages = imageAttachments.length > 0;
 
-    if (!trimmed && !hasImages) {
+    if (!trimmed && !hasImages && !hasDocuments) {
       return;
     }
 
-    const isCommand = !!trimmed && COMMON_COMMANDS.includes(trimmed);
-    if (isCommand && hasImages) {
+    if (hasDocuments && hasImages) {
       persistMessage({
         type: 'bot',
         contentType: 'text',
-        content: 'Команды нельзя отправлять вместе с изображениями. Отправьте сначала команду, затем прикрепите файл.',
+        content: 'Нельзя отправлять документы вместе с изображениями. Удалите лишние вложения и попробуйте снова.',
         threadId,
       });
       return;
     }
 
-    const attachmentsToSend = [...pendingAttachments];
+    if (hasDocuments && documentAttachments.some(attachment => attachment.status === 'loading')) {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: 'Документ ещё подготавливается. Подождите пару секунд.',
+        threadId,
+      });
+      return;
+    }
+
+    if (documentAttachments.some(attachment => attachment.status === 'processing')) {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: 'Обработка документа уже выполняется. Дождитесь результата.',
+        threadId,
+      });
+      return;
+    }
+
+    if (hasDocuments && !trimmed) {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: 'Чтобы проанализировать документ, задайте вопрос или инструкцию в поле ввода.',
+        threadId,
+      });
+      return;
+    }
+
+    const isCommand = !!trimmed && COMMON_COMMANDS.includes(trimmed);
+    if (isCommand && (hasImages || hasDocuments)) {
+      persistMessage({
+        type: 'bot',
+        contentType: 'text',
+        content: 'Команды нельзя отправлять вместе с файлами. Отправьте команду отдельно.',
+        threadId,
+      });
+      return;
+    }
+
     const currentSettings = getCurrentThreadSettings();
     const provider = currentSettings.chatProvider ?? 'openrouter';
     const _userApiKey = provider === 'agentrouter' ? (currentSettings.agentRouterApiKey ?? '') : currentSettings.openRouterApiKey;
@@ -236,16 +414,17 @@ const AppContent = () => {
       return;
     }
 
-    const shouldSendText = !!trimmed && (trimmed !== '/help') && !hasImages;
+    const shouldSendText = !!trimmed && (trimmed !== '/help') && !hasImages && !hasDocuments;
 
-    if (!shouldSendText && !hasImages) {
+    if (!shouldSendText && !hasImages && !hasDocuments) {
       return;
     }
 
     setIsTyping(true);
     setIsAwaitingImageDescription(hasImages);
 
-    let uploadSucceeded = false;
+    let uploadImagesSucceeded = false;
+    let documentProcessed = false;
 
     try {
       if (shouldSendText) {
@@ -298,7 +477,7 @@ const AppContent = () => {
         const systemPrompt = localStorage.getItem('systemPrompt');
         try {
           const response = await uploadImagesForAnalysis({
-            files: attachmentsToSend.map(attachment => attachment.file),
+            files: imageAttachments.map(attachment => attachment.file),
             threadId,
             history: historyMessages,
             settings: currentSettings,
@@ -330,7 +509,7 @@ const AppContent = () => {
             content: response.response ?? 'Не удалось получить описание изображений.',
             threadId: targetThreadId,
           });
-          uploadSucceeded = true;
+          uploadImagesSucceeded = true;
         } catch (error) {
           console.error('Image description error:', error);
           persistMessage({
@@ -341,11 +520,71 @@ const AppContent = () => {
           });
         }
       }
+
+      if (hasDocuments) {
+        setPendingAttachments(prev => prev.map(item => (item.kind === 'document' ? { ...item, status: 'processing' } : item)));
+        const systemPrompt = localStorage.getItem('systemPrompt');
+        try {
+          const response = await analyzeDocument({
+            file: documentAttachments[0].file,
+            threadId,
+            history: historyMessages,
+            settings: currentSettings,
+            systemPrompt,
+            query: trimmed,
+            provider,
+          });
+
+          const targetThreadId = response.thread_id ?? threadId;
+
+          documentAttachments.forEach(attachment => {
+            if (!attachment.persisted) {
+              persistMessage({
+                type: 'user',
+                contentType: 'document',
+                content: `Документ: ${attachment.name}`,
+                threadId: targetThreadId,
+                fileName: attachment.name,
+                mimeType: attachment.mimeType,
+              });
+            }
+          });
+
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: response.response ?? 'Документ обработан.',
+            threadId: targetThreadId,
+          });
+
+          documentProcessed = true;
+        } catch (error) {
+          console.error('Document analysis error:', error);
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: `Ошибка обработки документа: ${(error as Error).message}`,
+            threadId,
+          });
+        }
+      }
     } finally {
       setIsTyping(false);
       setIsAwaitingImageDescription(false);
-      if (uploadSucceeded) {
-        setPendingAttachments([]);
+      if (uploadImagesSucceeded) {
+        setPendingAttachments(prev => prev.filter(attachment => attachment.kind !== 'image'));
+      }
+      if (hasDocuments) {
+        setPendingAttachments(prev => prev.map(attachment => {
+          if (attachment.kind !== 'document') {
+            return attachment;
+          }
+          return {
+            ...attachment,
+            status: 'ready',
+            persisted: documentProcessed ? true : attachment.persisted,
+          };
+        }));
       }
     }
   };
@@ -454,14 +693,14 @@ const AppContent = () => {
                   audioEnabled={audioEnabled}
                   handleInputChange={(e) => setInput(e.target.value)}
                   handleVoiceInput={toggleRecognition}
-                  handleImageUpload={handleImageUpload}
+                  handleFileUpload={handleAttachmentUpload}
                   handleSubmit={handleSubmit}
                   handleCommandClick={(cmd) => setInput(cmd)}
                   messagesEndRef={messagesEndRef}
                   fileInputRef={fileInputRef}
                   triggerFileInput={triggerFileInput}
                   COMMON_COMMANDS={COMMON_COMMANDS}
-                  pendingAttachments={pendingAttachments.map(({ id, previewUrl, name }) => ({ id, previewUrl, name }))}
+                  pendingAttachments={pendingAttachments}
                   removeAttachment={handleRemoveAttachment}
                 />
               </div>

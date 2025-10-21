@@ -507,6 +507,83 @@ export const uploadImagesForAnalysis = async ({ files, threadId, history, settin
   return (await response.json()) as ImageUploadResponse;
 };
 
+interface AnalyzeDocumentParams {
+  file: File;
+  query: string;
+  threadId: string;
+  history: ChatMessage[];
+  settings: ThreadSettings;
+  systemPrompt?: string | null;
+  provider: 'openrouter' | 'agentrouter';
+}
+
+interface DocumentAnalysisPayload {
+  status: string;
+  response: string;
+  thread_id?: string;
+  document?: {
+    filename: string;
+    mime_type: string;
+    size: number;
+  };
+}
+
+export const analyzeDocument = async ({
+  file,
+  query,
+  threadId,
+  history,
+  settings,
+  systemPrompt,
+  provider,
+}: AnalyzeDocumentParams): Promise<DocumentAnalysisPayload> => {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  formData.append('message', query);
+  formData.append('thread_id', threadId);
+  formData.append('history', JSON.stringify(history));
+
+  const historyLimit = Math.max(1, Math.min(50, settings.historyMessageCount ?? 5));
+  formData.append('history_message_count', String(historyLimit));
+
+  if (systemPrompt && systemPrompt.trim()) {
+    formData.append('system_prompt', systemPrompt);
+  }
+
+  if (provider === 'agentrouter') {
+    formData.append('provider_type', 'agentrouter');
+    if (settings.agentRouterApiKey) {
+      formData.append('agent_router_api_key', settings.agentRouterApiKey);
+    }
+    if (settings.agentRouterModel) {
+      formData.append('agent_router_model', settings.agentRouterModel);
+    }
+    if (settings.agentRouterBaseUrl) {
+      formData.append('agent_router_base_url', settings.agentRouterBaseUrl);
+    }
+  } else {
+    formData.append('provider_type', 'openrouter');
+    if (settings.openRouterApiKey) {
+      formData.append('open_router_api_key', settings.openRouterApiKey);
+    }
+    if (settings.openRouterModel) {
+      formData.append('open_router_model', settings.openRouterModel);
+    }
+  }
+
+  const response = await fetch(buildApiUrl('/file/analyze'), {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Document analysis error: ${response.status} ${errorText}`);
+  }
+
+  return (await response.json()) as DocumentAnalysisPayload;
+};
+
 export const callMCP = async (method: string, params: Record<string, unknown>) => {
   const mcpUrl = import.meta.env.VITE_MCP_URL;
   if (!mcpUrl) {
