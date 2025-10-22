@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from typing import Any, List, Dict
+from urllib.parse import urlparse
 
 import requests
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
 from app.logging import get_logger
+from app.security_layer.dependencies import require_session
+from app.settings import get_settings
 
-router = APIRouter(prefix="/api/providers/agentrouter", tags=["OpenAI Compatible"])
+router = APIRouter(prefix="/api/providers/agentrouter", tags=["OpenAI Compatible"], include_in_schema=False)
 logger = get_logger()
+settings = get_settings()
 
 
 def _normalize_models(payload: Any) -> List[str]:
@@ -42,12 +46,29 @@ def _normalize_models(payload: Any) -> List[str]:
 
 
 @router.get("/models")
-async def list_models(request: Request, base_url: str = Query(..., description="OpenAI Compatible base URL")) -> Dict[str, List[str]]:
+async def list_models(
+    request: Request,
+    base_url: str = Query(..., description="OpenAI Compatible base URL"),
+    session=Depends(require_session),
+) -> Dict[str, List[str]]:
     auth = (request.headers.get("Authorization") or "").strip()
     if not base_url:
         raise HTTPException(status_code=400, detail={"code": "missing_base_url", "message": "Query param base_url is required"})
     if not auth:
         raise HTTPException(status_code=400, detail={"code": "missing_key", "message": "Authorization: Bearer <api_key> header is required"})
+
+    try:
+        parsed = urlparse(base_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "agentrouter_bad_url", "message": "Некорректный base_url"}) from exc
+
+    if parsed.scheme.lower() != "https":
+        raise HTTPException(status_code=400, detail={"code": "agentrouter_insecure", "message": "Допускаются только HTTPS endpoints"})
+
+    normalized_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+    allowlist = {item.rstrip("/").lower() for item in settings.allowed_agentrouter_base_urls}
+    if allowlist and normalized_origin not in allowlist:
+        raise HTTPException(status_code=403, detail={"code": "agentrouter_forbidden", "message": "Провайдер не разрешён"})
 
     target = f"{base_url.rstrip('/')}/models"
     headers = {"Authorization": auth, "Accept": "application/json"}

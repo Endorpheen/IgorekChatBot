@@ -36,16 +36,41 @@ class Settings(BaseSettings):
 
     allow_origins: List[str] = Field(
         default_factory=lambda: [
-            "http://localhost",
-            "http://localhost:5173",
-            "http://127.0.0.1",
-            "http://127.0.0.1:5173",
+            "https://igorekchatbot.ru",
             "https://igorek.end0databox.duckdns.org",
         ]
     )
-    allow_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    allow_origin_regex: str = r"^https://(igorekchatbot\.ru|igorek\.end0databox\.duckdns\.org)$"
 
     webui_dir: Path = Field(default=Path("/app/web-ui"))
+
+    docs_auth_enabled: bool = True
+    docs_auth_username: Optional[str] = None
+    docs_auth_password: Optional[str] = None
+
+    session_cookie_name: str = "igc_session"
+    session_header_name: str = "X-Session-Token"
+    session_secret: Optional[str] = None
+    session_ttl_seconds: int = 7 * 24 * 60 * 60
+    legacy_session_compat_enabled: bool = True
+    legacy_session_allowed_origins: List[str] = Field(
+        default_factory=lambda: [
+            "https://igorekchatbot.ru",
+            "https://igorek.end0databox.duckdns.org",
+        ]
+    )
+
+    signed_link_secret: Optional[str] = None
+    signed_link_ttl_seconds: int = 300
+    signed_link_compat_enabled: bool = True
+
+    rate_limit_chat_per_minute: int = 60
+    rate_limit_image_analyze_per_minute: int = 15
+    rate_limit_file_analyze_per_hour: int = 30
+    rate_limit_image_generate_per_minute: int = 20
+    rate_limit_mcp_per_minute: int = 30
+
+    allowed_agentrouter_base_urls: List[str] = Field(default_factory=list)
 
     openrouter_api_key: Optional[str] = None
     openrouter_model: str = "openai/gpt-4o-mini"

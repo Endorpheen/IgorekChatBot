@@ -279,7 +279,9 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(requestBody),
   });
 
@@ -337,6 +339,7 @@ export const createImageGenerationJob = async (payload: {
       'X-Client-Session': getImageSessionId(),
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(requestBody),
   });
 
@@ -354,6 +357,7 @@ export const fetchImageJobStatus = async (jobId: string): Promise<ImageJobStatus
       Accept: 'application/json',
       'X-Client-Session': getImageSessionId(),
     },
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -372,6 +376,7 @@ export const validateProviderKey = async (providerId: string, apiKey: string): P
       'X-Client-Session': getImageSessionId(),
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify({ provider: providerId }),
   });
 
@@ -386,6 +391,7 @@ export const fetchProviderList = async (): Promise<ProviderListResponse> => {
     headers: {
       Accept: 'application/json',
     },
+    credentials: 'include',
   });
   if (!response.ok) {
     await parseErrorResponse(response);
@@ -407,6 +413,7 @@ export const fetchProviderModels = async (providerId: string, apiKey: string, op
       'X-Image-Key': apiKey,
       'X-Client-Session': getImageSessionId(),
     },
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -496,7 +503,11 @@ export const uploadImagesForAnalysis = async ({ files, threadId, history, settin
 
   const response = await fetch(buildApiUrl('/image/analyze'), {
     method: 'POST',
+    headers: {
+      ...buildCsrfHeader(),
+    },
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -573,7 +584,11 @@ export const analyzeDocument = async ({
 
   const response = await fetch(buildApiUrl('/file/analyze'), {
     method: 'POST',
+    headers: {
+      ...buildCsrfHeader(),
+    },
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -660,19 +675,14 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
 };
 
 export const mcpSearch = async (payload: { query: string; [key: string]: any }): Promise<any> => {
-  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
-  if (!token) {
-    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
-  }
-
   const response = await fetch(buildApiUrl('/api/mcp/search'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'Authorization': `Bearer ${token}`,
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   });
 
@@ -684,19 +694,14 @@ export const mcpSearch = async (payload: { query: string; [key: string]: any }):
 };
 
 export const mcpFetch = async (payload: { id: string; [key: string]: any }): Promise<any> => {
-  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
-  if (!token) {
-    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
-  }
-
   const response = await fetch(buildApiUrl('/api/mcp/fetch'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'Authorization': `Bearer ${token}`,
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   });
 

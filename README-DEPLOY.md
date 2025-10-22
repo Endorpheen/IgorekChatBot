@@ -21,6 +21,11 @@ cp .env.example .env
 * **STABILITY_API_KEY** — ключ StabilityAI (опционально, если есть кредиты)
 * **GOOGLE_CSE_ID** — идентификатор Google Custom Search Engine
 * **GOOGLE_API_KEY** — API-ключ Google для веб-поиска
+* **SESSION_SECRET** — общий секрет для подписания серверных сессий (обязателен в проде)
+* **SIGNED_LINK_SECRET** — секрет для подписанных ссылок скачивания (обязателен в проде)
+* **DOCS_AUTH_USERNAME / DOCS_AUTH_PASSWORD** — учётка для доступа к API-документации
+* **LEGACY_SESSION_ALLOWED_ORIGINS** — список доменов (через запятую), с которых временно допускаются старые `X-Client-Session` заголовки
+* **ALLOWED_AGENTROUTER_BASE_URLS** — белый список URL для OpenAI-compatible прокси (через запятую)
 
 3. **Собрать и запустить контейнер**
 

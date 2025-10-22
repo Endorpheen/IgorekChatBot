@@ -1,14 +1,20 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from typing import Dict, Any
-from app.features.mcp.service import mcp_service
-from app.security import get_current_user
 import requests
+
+from app.features.mcp.service import mcp_service
+from app.middlewares.security import _require_csrf_token
+from app.security_layer.dependencies import require_session
+from app.security_layer.rate_limiter import RateLimitConfig, get_rate_limiter
+from app.settings import get_settings
 
 router = APIRouter(
     prefix="/api/mcp", 
     tags=["MCP"], 
-    dependencies=[Depends(get_current_user)]
+    include_in_schema=False,
 )
+
+settings = get_settings()
 
 async def handle_mcp_request(method, payload):
     try:
@@ -29,9 +35,31 @@ async def handle_mcp_request(method, payload):
         raise HTTPException(status_code=500, detail={"error": "UNKNOWN_MCP_ERROR", "message": str(e)})
 
 @router.post("/search")
-async def search(payload: Dict[str, Any] = Body(...)):
+async def search(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+    session=Depends(require_session),
+):
+    _require_csrf_token(request)
+    limiter = get_rate_limiter()
+    limiter.hit(
+        "mcp:session",
+        session.session_id,
+        RateLimitConfig(limit=settings.rate_limit_mcp_per_minute, window_seconds=60),
+    )
     return await handle_mcp_request(mcp_service.search, payload)
 
 @router.post("/fetch")
-async def fetch(payload: Dict[str, Any] = Body(...)):
+async def fetch(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+    session=Depends(require_session),
+):
+    _require_csrf_token(request)
+    limiter = get_rate_limiter()
+    limiter.hit(
+        "mcp:session",
+        session.session_id,
+        RateLimitConfig(limit=settings.rate_limit_mcp_per_minute, window_seconds=60),
+    )
     return await handle_mcp_request(mcp_service.fetch, payload)

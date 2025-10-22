@@ -3,14 +3,19 @@ from __future__ import annotations
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.features.chat.service import THREAD_MODEL_OVERRIDES, call_ai_query
 from app.logging import get_logger
+from app.middlewares.security import _require_csrf_token
+from app.security_layer.dependencies import require_session
+from app.security_layer.rate_limiter import RateLimitConfig, get_rate_limiter
+from app.settings import get_settings
 
 router = APIRouter()
 logger = get_logger()
+settings = get_settings()
 
 
 class ChatMessagePayload(BaseModel):
@@ -46,8 +51,25 @@ class ChatResponse(BaseModel):
     thread_id: str | None = None
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
+@router.post("/chat", response_model=ChatResponse, include_in_schema=False)
+async def chat_endpoint(
+    payload: ChatRequest,
+    request: Request,
+    session=Depends(require_session),
+) -> ChatResponse:
+    _require_csrf_token(request)
+    limiter = get_rate_limiter()
+    limiter.hit(
+        "chat:session",
+        session.session_id,
+        RateLimitConfig(limit=settings.rate_limit_chat_per_minute, window_seconds=60),
+    )
+    client_ip = request.client.host if request.client else "unknown"
+    limiter.hit(
+        "chat:ip",
+        client_ip,
+        RateLimitConfig(limit=settings.rate_limit_chat_per_minute, window_seconds=60),
+    )
     log_payload = payload.model_dump(by_alias=True)
     if log_payload.get("openRouterApiKey"):
         log_payload["openRouterApiKey"] = "***masked***"

@@ -5,10 +5,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from app.features.chat.service import THREAD_MODEL_OVERRIDES, call_ai_query
 from app.logging import get_logger
+from app.middlewares.security import _require_csrf_token
+from app.security_layer.dependencies import require_session
+from app.security_layer.rate_limiter import RateLimitConfig, get_rate_limiter
 from app.settings import get_settings
 
 router = APIRouter()
@@ -71,8 +74,9 @@ def _normalise_history(raw_history: List[Any], limit: int) -> List[Dict[str, str
     return normalised
 
 
-@router.post("/file/analyze")
+@router.post("/file/analyze", include_in_schema=False)
 async def analyze_document_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     message: str = Form(...),
     thread_id: str = Form(...),
@@ -85,7 +89,21 @@ async def analyze_document_endpoint(
     agent_router_model: Optional[str] = Form(default=None),
     agent_router_base_url: Optional[str] = Form(default=None),
     system_prompt: Optional[str] = Form(default=None),
+    session=Depends(require_session),
 ):
+    _require_csrf_token(request)
+    limiter = get_rate_limiter()
+    limiter.hit(
+        "file_analyze:session",
+        session.session_id,
+        RateLimitConfig(limit=settings.rate_limit_file_analyze_per_hour, window_seconds=3600),
+    )
+    client_ip = request.client.host if request.client else "unknown"
+    limiter.hit(
+        "file_analyze:ip",
+        client_ip,
+        RateLimitConfig(limit=settings.rate_limit_file_analyze_per_hour, window_seconds=3600),
+    )
     filename = file.filename or 'document'
     extension = Path(filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
