@@ -1,0 +1,75 @@
+services:
+  chatbot:
+    build:
+      context: .
+      args:
+        - VITE_AGENT_API_BASE=${VITE_AGENT_API_BASE}
+        - VITE_MCP_API_AUTH_TOKEN=${VITE_MCP_API_AUTH_TOKEN}
+    container_name: igorekchatbot
+    restart: unless-stopped
+    volumes:
+      - ./uploads:/app/uploads
+      - ./docs/build:/app/docs/build
+    networks:
+      - mcpnet
+    depends_on:
+      mcp_obsidian:
+        condition: service_healthy
+    environment:
+      - MCP_API_AUTH_TOKEN=${MCP_API_AUTH_TOKEN}
+      - MCP_URL=${MCP_URL}
+      - VITE_MCP_URL=${VITE_MCP_URL}
+      - VITE_MCP_API_AUTH_TOKEN=${VITE_MCP_API_AUTH_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_CSE_ID=${GOOGLE_CSE_ID}
+      - VITE_AGENT_API_BASE=http://chatbot:3000
+      - MCP_VAULT_URL=${MCP_VAULT_URL}
+      - MCP_SECRET=${MCP_SECRET}
+      - DOCS_AUTH_USERNAME=${DOCS_AUTH_USERNAME}
+      - DOCS_AUTH_PASSWORD=${DOCS_AUTH_PASSWORD}
+  mcp_obsidian:
+    build:
+      context: ./mcp_servers/obsidian
+      dockerfile: Dockerfile.node
+    container_name: mcp_obsidian
+    restart: unless-stopped
+    networks:
+      - mcpnet
+    environment:
+      - PORT=3333
+      - VAULT_PATH=/vault
+      - LOG_FILE=/app/logs/logs.json
+      - MCP_SECRET=${MCP_SECRET}
+    volumes:
+      - /root/vault:/vault:ro
+      - /root/mcp-logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -X POST -H 'Authorization: Bearer ${MCP_SECRET}' http://localhost:3333/search -H 'Content-Type: application/json' -d '{}' | grep -q 'results'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  sandbox_executor:
+    build:
+      context: ./sandbox_executor
+    container_name: sandbox_executor
+    restart: unless-stopped
+    networks:
+      - mcpnet
+    mem_limit: 128m
+    cpus: 0.5
+
+  browser:
+    build:
+      context: ./browser
+    container_name: browser
+    restart: unless-stopped
+    networks:
+      - mcpnet
+    mem_limit: 512m
+    cpus: 1.5
+networks:
+  mcpnet:
+    external: true
