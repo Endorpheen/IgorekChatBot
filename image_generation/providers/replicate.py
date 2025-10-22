@@ -36,6 +36,76 @@ _FALLBACK_MODEL_IDS = (
     "stability-ai/sdxl",
 )
 
+_FEATURED_MODEL_IDS: tuple[str, ...] = tuple(
+    dict.fromkeys(
+        [
+            "bytedance/seedream-3",
+            "bytedance/seedream-4",
+            "black-forest-labs/flux-schnell",
+            "black-forest-labs/flux-1.1-pro",
+            "black-forest-labs/flux-1.1-pro-ultra",
+            "black-forest-labs/flux-pro",
+            "black-forest-labs/flux-dev",
+            "black-forest-labs/flux-kontext-pro",
+            "black-forest-labs/flux-kontext-max",
+            "ideogram-ai/ideogram-v3-turbo",
+            "ideogram-ai/ideogram-v3-quality",
+            "ideogram-ai/ideogram-v3-balanced",
+            "ideogram-ai/ideogram-v2",
+            "ideogram-ai/ideogram-v2a",
+            "ideogram-ai/ideogram-v2-turbo",
+            "ideogram-ai/ideogram-v2a-turbo",
+            "google/imagen-3",
+            "google/imagen-3-fast",
+            "google/imagen-4",
+            "google/imagen-4-fast",
+            "google/imagen-4-ultra",
+            "google/nano-banana",
+            "qwen/qwen-image",
+            "tencent/hunyuan-image-3",
+            "stability-ai/sdxl",
+            "stability-ai/stable-diffusion-3.5-large",
+            "stability-ai/stable-diffusion-3.5-large-turbo",
+            "stability-ai/stable-diffusion-3.5-medium",
+            "recraft-ai/recraft-v3",
+            "recraft-ai/recraft-v3-svg",
+            "leonardoai/lucid-origin",
+            "bria/image-3.2",
+            "minimax/image-01",
+            "luma/photon",
+            "luma/photon-flash",
+            "playgroundai/playground-v2.5",
+            "ai-forever/kandinsky-2",
+            "ai-forever/kandinsky-2.2",
+            "runwayml/gen3-alpha",
+            "fofr/any-comfyui-workflow",
+            "nvidia/sana",
+            "nvidia/sana-sprint-1.6b",
+            "prunaai/hidream-l1-fast",
+            "prunaai/hidream-l1-full",
+            "prunaai/hidream-l1-dev",
+            "prunaai/flux.1-dev",
+            "prunaai/wan-2.2-image",
+            "prunaai/sdxl-lightning",
+            "prunaai/sdxl-lightning-4step",
+            "datacte/proteus-v0.2",
+            "datacte/proteus-v0.3",
+            "lucataco/dreamshaper-xl-turbo",
+            "lucataco/realistic-vision-v5.1",
+            "lucataco/ssd-1b",
+            "lucataco/open-dalle-v1.1",
+            "adirik/realvisxl-v3.0-turbo",
+            "adirik/realvisxl-v3-multi-controlnet-lora",
+            "jagilley/controlnet-scribble",
+            "tstramer/material-diffusion",
+            "fermatresearch/sdxl-controlnet-lora",
+            "fermatresearch/sdxl-multi-controlnet-lora",
+            "lucataco/realvisxl-v3-multi-controlnet-lora",
+            "stability-ai/stable-diffusion",
+        ]
+    ).keys()
+)
+
 _BASE_URL = os.getenv("REPLICATE_API_BASE", "https://api.replicate.com/v1")
 
 
@@ -87,6 +157,70 @@ class ReplicateAdapter:
         models = list(aggregated.values())
         models.sort(key=lambda spec: (spec.get("recommended") is not True, spec.get("display_name", spec["id"])) )
         return models
+
+    def search_models(self, query: str, key: str, *, limit: int = 50) -> List[ProviderModelSpec]:  # noqa: D401
+        query = (query or "").strip()
+        if not query:
+            return []
+
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+        }
+
+        aggregated: Dict[str, ProviderModelSpec] = {}
+        max_total = max(1, min(limit, 200))
+        next_url: Optional[str] = f"{_BASE_URL}/models?{urlencode({'search': query, 'limit': min(50, max_total)})}"
+        page = 0
+        max_pages = 5
+
+        while next_url and page < max_pages and len(aggregated) < max_total:
+            payload = self._request_json(next_url, headers)
+            for item in self._extract_items(payload):
+                self._add_model_candidate(item, headers, aggregated, from_collection=False)
+                if len(aggregated) >= max_total:
+                    break
+            next_url = self._extract_next(payload)
+            page += 1
+
+        models = list(aggregated.values())
+        normalized_query = query.lower()
+        models = [
+            spec for spec in models
+            if normalized_query in (spec.get("display_name") or "").lower()
+            or normalized_query in spec.get("id", "").lower()
+        ]
+        models.sort(key=lambda spec: (spec.get("recommended") is not True, spec.get("display_name", spec["id"])))
+        if len(models) > max_total:
+            models = models[:max_total]
+        return models
+
+    def get_featured_models(self, key: str) -> List[ProviderModelSpec]:  # noqa: D401
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+        }
+
+        featured: Dict[str, ProviderModelSpec] = {}
+        for full_id in _FEATURED_MODEL_IDS:
+            owner, sep, name = full_id.partition("/")
+            if not sep:
+                continue
+
+            spec: Optional[ProviderModelSpec]
+            details = self._fetch_model_details(owner, name, headers)
+            if details:
+                spec = self._normalise_model(details, headers, from_collection=True)
+            else:
+                spec = None
+
+            if not spec:
+                spec = self._build_placeholder_spec(full_id)
+
+            spec["recommended"] = True
+            featured[spec["id"]] = spec
+
+        return list(featured.values())
 
     def validate_params(
         self,
@@ -515,6 +649,28 @@ class ReplicateAdapter:
             if spec:
                 fallback[spec["id"]] = spec
         return fallback
+
+    def _build_placeholder_spec(self, full_id: str) -> ProviderModelSpec:
+        _, _, name = full_id.partition("/")
+        display_source = name or full_id
+        display = display_source.replace("-", " ").replace("_", " ").replace(".", " ")
+        display = " ".join(part.capitalize() for part in display.split()) or full_id
+
+        spec: ProviderModelSpec = {
+            "id": full_id,
+            "display_name": display,
+            "recommended": True,
+            "capabilities": {
+                "supports_steps": True,
+                "supports_cfg": True,
+                "supports_seed": True,
+                "supports_mode": False,
+            },
+            "limits": {},
+            "defaults": {},
+            "metadata": {},
+        }
+        return apply_limit_defaults(spec)
 
 
 __all__ = ["ReplicateAdapter"]

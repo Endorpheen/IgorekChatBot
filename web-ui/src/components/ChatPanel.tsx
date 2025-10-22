@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import { Command, Mic, Send, Upload, MoreVertical, Check, X } from 'lucide-react';
+import { Command, Mic, Send, Upload, MoreVertical, Check, X, FileText, Loader2 } from 'lucide-react';
 import CodeBlock from './CodeBlock';
 import type { ChatMessage } from '../types/chat';
 
@@ -12,14 +12,14 @@ interface ChatPanelProps {
   audioEnabled: boolean;
   handleInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   handleVoiceInput: () => void;
-  handleImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   handleSubmit: (event: React.FormEvent) => void;
   handleCommandClick: (command: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   triggerFileInput: () => void;
   COMMON_COMMANDS: string[];
-  pendingAttachments: Array<{ id: string; previewUrl: string; name: string }>;
+  pendingAttachments: Array<{ id: string; name: string; kind: 'image' | 'document'; previewUrl?: string; status: 'loading' | 'ready' | 'processing' }>;
   removeAttachment: (id: string) => void;
 }
 
@@ -31,7 +31,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   audioEnabled,
   handleInputChange,
   handleVoiceInput,
-  handleImageUpload,
+  handleFileUpload,
   handleSubmit,
   handleCommandClick,
   messagesEndRef,
@@ -107,12 +107,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                 {msg.content}
               </ReactMarkdown>
             </div>
+          ) : msg.contentType === 'image' ? (
+            <img
+              src={msg.url ?? msg.content}
+              alt={msg.fileName ?? 'Uploaded image'}
+              className="chat-image"
+            />
           ) : (
-              <img
-                src={msg.url ?? msg.content}
-                alt={msg.fileName ?? 'Uploaded image'}
-                className="chat-image"
-              />
+            <div className="chat-document-message">
+              <FileText className="icon" />
+              <div className="chat-document-text" title={msg.content}>
+                {msg.content}
+              </div>
+            </div>
           )}
             <div className="message-actions">
               <button
@@ -170,20 +177,56 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         {pendingAttachments.length > 0 && (
           <div className="attachment-preview-list">
             {pendingAttachments.map(attachment => (
-              <div key={attachment.id} className="attachment-preview-item">
-                <div className="attachment-thumb">
-                  <img src={attachment.previewUrl} alt={`Предпросмотр ${attachment.name}`} />
-                  <button
-                    type="button"
-                    className="attachment-remove"
-                    onClick={() => removeAttachment(attachment.id)}
-                    title="Убрать изображение"
-                    disabled={isTyping}
-                  >
-                    <X className="icon" />
-                  </button>
-                </div>
-                <span className="attachment-name" title={attachment.name}>{attachment.name}</span>
+              <div
+                key={attachment.id}
+                className={`attachment-preview-item ${attachment.kind === 'document' ? 'attachment-preview-item--document' : ''}`}
+              >
+                {attachment.kind === 'document' ? (
+                  <div className="attachment-document-card">
+                    <div className="attachment-document-icon">
+                      {attachment.status === 'processing' || attachment.status === 'loading' ? (
+                        <Loader2 className="icon attachment-spinner" />
+                      ) : (
+                        <FileText className="icon" />
+                      )}
+                    </div>
+                    <div className="attachment-document-meta">
+                      <span className="attachment-document-name" title={attachment.name}>{attachment.name}</span>
+                      <span className="attachment-document-status">
+                        {attachment.status === 'loading'
+                          ? 'Подготовка...'
+                          : attachment.status === 'processing'
+                            ? 'Обработка...'
+                            : 'Ожидает запроса'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="attachment-remove"
+                      onClick={() => removeAttachment(attachment.id)}
+                      title="Удалить документ"
+                      disabled={isTyping || attachment.status === 'processing'}
+                    >
+                      <X className="icon" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="attachment-thumb">
+                      <img src={attachment.previewUrl} alt={`Предпросмотр ${attachment.name}`} />
+                      <button
+                        type="button"
+                        className="attachment-remove"
+                        onClick={() => removeAttachment(attachment.id)}
+                        title="Убрать изображение"
+                        disabled={isTyping}
+                      >
+                        <X className="icon" />
+                      </button>
+                    </div>
+                    <span className="attachment-name" title={attachment.name}>{attachment.name}</span>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -211,15 +254,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             className="upload-button"
             onClick={triggerFileInput}
             disabled={isTyping}
-            title="Загрузить изображение для анализа"
+            title="Прикрепить файл"
           >
             <Upload className="icon" />
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
+            accept="image/*,.pdf,.md,.txt,.docx"
+            onChange={handleFileUpload}
             multiple
             hidden
           />

@@ -1,5 +1,5 @@
 export type MessageAuthor = 'user' | 'bot';
-export type MessageContentType = 'text' | 'image';
+export type MessageContentType = 'text' | 'image' | 'document';
 
 export interface ChatMessage {
   id: string;
@@ -18,11 +18,18 @@ export interface ThreadNameMap {
 }
 
 export interface ThreadSettings {
-  openRouterEnabled: boolean;
   openRouterApiKey: string;
   openRouterModel: string;
   historyMessageCount: number;
   threadId?: string;
+
+  // Chat provider selection
+  chatProvider?: 'openrouter' | 'agentrouter';
+
+  // OpenAI Compatible settings
+  agentRouterBaseUrl?: string;
+  agentRouterApiKey?: string;
+  agentRouterModel?: string;
 }
 
 export interface ThreadSettingsMap {

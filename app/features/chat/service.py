@@ -32,29 +32,43 @@ def call_ai_query(
     user_model: str | None = None,
     messages: list[dict[str, str]] | None = None,
     thread_id: str | None = None,
+    provider_type: str | None = None,
+    agent_base_url: str | None = None,
 ) -> str:
     actual_api_key = user_api_key or settings.openrouter_api_key
     actual_model = user_model or settings.openrouter_model
+    provider = (provider_type or "openrouter").strip().lower()
 
     logger.debug("[AI QUERY] prompt=%s", prompt)
     logger.debug("[AI QUERY] history=%s", history)
     logger.debug("[AI QUERY] incoming_messages=%s", messages)
     logger.debug("[AI QUERY] actual_model=%s", actual_model)
     logger.debug("[AI QUERY] actual_api_key=%s", "***masked***" if actual_api_key else None)
+    logger.debug("[AI QUERY] provider_type=%s", provider)
+    logger.debug("[AI QUERY] agent_base_url=%s", agent_base_url)
 
-    if not actual_api_key:
-        raise RuntimeError("Нет доступного OpenRouter API ключа")
+    if provider == "agentrouter":
+        if not actual_api_key:
+            raise RuntimeError("Нет доступного OpenAI Compatible API ключа")
+        if not agent_base_url:
+            raise RuntimeError("Не задан base_url для провайдера OpenAI Compatible")
+    else:
+        if not actual_api_key:
+            raise RuntimeError("Нет доступного OpenRouter API ключа")
+
+    base_url = agent_base_url if provider == "agentrouter" else "https://openrouter.ai/api/v1"
+    default_headers = None if provider == "agentrouter" else {
+        "HTTP-Referer": "http://localhost",
+        "X-Title": "IgorekChatBot",
+    }
 
     llm = ChatOpenAI(
         model=actual_model,
         api_key=actual_api_key,
-        base_url="https://openrouter.ai/api/v1",
+        base_url=base_url,
         temperature=0.7,
         max_tokens=settings.max_completion_tokens,
-        default_headers={
-            "HTTP-Referer": "http://localhost",
-            "X-Title": "IgorekChatBot",
-        },
+        default_headers=default_headers,
     )
 
     llm_with_tools = _bind_tools(llm)

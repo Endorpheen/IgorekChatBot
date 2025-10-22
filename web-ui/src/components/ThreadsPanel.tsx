@@ -61,8 +61,10 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
         )}
         <ul className="threads-list">
           {sortedThreads.map((id) => {
-            const settings = threadSettings[id] || { openRouterEnabled: false };
-            const isOpenRouter = settings.openRouterEnabled && settings.openRouterApiKey;
+            const settings = threadSettings[id];
+            const provider = settings?.chatProvider ?? 'openrouter';
+            const indicatorClass = provider === 'openrouter' ? 'openrouter' : 'agentrouter';
+            const indicatorIcon = provider === 'openrouter' ? '🌩️' : '🛰️';
             const threadLabel = threadNames[id] ?? 'Без названия';
 
             return (
@@ -115,8 +117,8 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
                   data-thread-name={threadLabel}
                   title={threadLabel}
                 >
-                  <span className={`thread-model-indicator ${isOpenRouter ? 'openrouter' : 'local'}`}>
-                    {isOpenRouter ? '🌩️' : '💻'}
+                  <span className={`thread-model-indicator ${indicatorClass}`}>
+                    {indicatorIcon}
                   </span>
                   <span className="thread-name">{threadLabel}</span>
                 </button>

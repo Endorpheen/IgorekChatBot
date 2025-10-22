@@ -350,6 +350,31 @@ class ImageGenerationManager:
             raise ImageGenerationError("Неизвестный провайдер", status_code=400, error_code="provider_unknown")
         return await self._load_models(provider_id, api_key, force=force)
 
+    async def search_provider_models(
+        self,
+        provider_id: str,
+        api_key: str,
+        query: str,
+        *,
+        limit: int = 50,
+    ) -> List[ProviderModelSpec]:
+        provider_id = provider_id.lower().strip()
+        if provider_id not in self.registry:
+            raise ImageGenerationError("Неизвестный провайдер", status_code=400, error_code="provider_unknown")
+        search_query = query.strip()
+        if not search_query:
+            raise ImageGenerationError("Поисковый запрос не может быть пустым", status_code=400, error_code="query_empty")
+        if provider_id != "replicate":
+            raise ImageGenerationError("Поиск поддерживается только для Replicate", status_code=400, error_code="search_not_supported")
+
+        adapter = self._get_adapter(provider_id)
+        try:
+            models = adapter.search_models(search_query, api_key, limit=limit)
+        except ProviderError as exc:
+            raise self._map_provider_error(exc) from exc
+
+        return copy.deepcopy(models)
+
     def list_providers(self) -> List[Dict[str, Any]]:
         providers = []
         for entry in self.registry.values():
@@ -515,6 +540,43 @@ class ImageGenerationManager:
             models = adapter.list_models(api_key, force=force)
         except ProviderError as exc:
             raise self._map_provider_error(exc) from exc
+
+        featured_models: List[ProviderModelSpec] = []
+        if provider_id == "replicate" and hasattr(adapter, "get_featured_models"):
+            try:
+                featured_models = adapter.get_featured_models(api_key)
+            except ProviderError as exc:
+                logger.warning("[IMAGE QUEUE] Не удалось загрузить избранные модели Replicate: %s", exc)
+            except Exception as exc:  # pragma: no cover - safety net
+                logger.warning("[IMAGE QUEUE] Ошибка при получении избранных моделей Replicate: %s", exc)
+
+        if featured_models:
+            combined: Dict[str, ProviderModelSpec] = {}
+            featured_order: List[str] = []
+
+            for spec in featured_models:
+                spec_copy = copy.deepcopy(spec)
+                spec_id = spec_copy.get("id")
+                if not spec_id:
+                    continue
+                spec_copy["recommended"] = True
+                combined[spec_id] = spec_copy
+                featured_order.append(spec_id)
+
+            for spec in models:
+                spec_id = spec.get("id")
+                if not spec_id:
+                    continue
+                if spec_id in combined:
+                    merged = copy.deepcopy(spec)
+                    merged["recommended"] = True
+                    combined[spec_id] = merged
+                else:
+                    combined[spec_id] = spec
+
+            ordered_models = [combined[item_id] for item_id in featured_order if item_id in combined]
+            ordered_models.extend(spec for item_id, spec in combined.items() if item_id not in featured_order)
+            models = ordered_models
 
         self._model_cache[cache_key] = ModelCacheEntry(models=models, fetched_at=now)
         return copy.deepcopy(models)

@@ -4,6 +4,8 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /chat
+Disallow: /docs
+Disallow: /openapi.json
 Disallow: /sandbox_executor/
 Disallow: /browser/
 

@@ -52,7 +52,17 @@ const defaultFormState = (): ProviderFormState => ({
 
 const ImageGenerationSettings: React.FC<ImageGenerationSettingsProps> = ({ isOpen, onKeyChange }) => {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string>('together');
+  const [activeProviderId, setActiveProviderId] = useState<string>(() => {
+    if (typeof window === 'undefined') {
+      return 'together';
+    }
+    try {
+      return localStorage.getItem('imageGenerationProvider') ?? 'together';
+    } catch (error) {
+      console.warn('Не удалось загрузить выбранного провайдера изображений из localStorage', error);
+      return 'together';
+    }
+  });
   const [forms, setForms] = useState<Record<string, ProviderFormState>>({});
 
   const activeForm = useMemo(() => forms[activeProviderId] ?? defaultFormState(), [forms, activeProviderId]);
@@ -110,6 +120,17 @@ const ImageGenerationSettings: React.FC<ImageGenerationSettingsProps> = ({ isOpe
     };
   }, [isOpen, activeProviderId]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      localStorage.setItem('imageGenerationProvider', activeProviderId);
+    } catch (error) {
+      console.warn('Не удалось сохранить выбранного провайдера изображений в localStorage', error);
+    }
+  }, [activeProviderId]);
+
   const updateForm = (providerId: string, patch: Partial<ProviderFormState>) => {
     setForms(prev => ({
       ...prev,
@@ -124,8 +145,15 @@ const ImageGenerationSettings: React.FC<ImageGenerationSettingsProps> = ({ isOpe
     return null;
   }
 
-  const providersToRender = providers.length > 0 ? providers : [{ id: 'together', label: 'Together AI', enabled: true, recommended_models: [] }];
+  const providersToRender =
+    providers.length > 0
+      ? providers
+      : [{ id: 'together', label: 'Together AI', enabled: true, recommended_models: [] }];
   const activeProviderLabel = providersToRender.find(provider => provider.id === activeProviderId)?.label ?? activeProviderId;
+
+  const handleProviderChange = (providerId: string) => {
+    setActiveProviderId(providerId);
+  };
 
   const handleUnlock = async () => {
     const form = forms[activeProviderId] ?? defaultFormState();
@@ -305,118 +333,130 @@ const ImageGenerationSettings: React.FC<ImageGenerationSettingsProps> = ({ isOpe
   };
 
   return (
-    <div className="provider-settings">
-      <div className="provider-tabs">
-        {providersToRender.map(provider => (
-          <button
-            key={provider.id}
-            type="button"
-            className={`provider-tab ${provider.id === activeProviderId ? 'active' : ''}`}
-            onClick={() => setActiveProviderId(provider.id)}
-          >
-            {provider.label}
-          </button>
-        ))}
+    <div className="settings-section">
+      <div className="settings-section-header">
+        <h4 className="settings-section-title">Провайдер изображений</h4>
+        <p className="settings-section-subtitle">
+          Выберите сервис генерации изображений и настройте параметры доступа.
+        </p>
       </div>
 
-      <div className="provider-settings-body">
-          <div className="setting-group">
-            <label className="setting-label">
-              <input
-                type="checkbox"
-                checked={activeForm.activated}
-                onChange={(event) => toggleActivation(event.target.checked)}
-              />
-              Активировать провайдера
-            </label>
-            <div className="setting-description">
-              Провайдер будет доступен в /images только когда активирован и сохранён ключ.
-            </div>
-          </div>
+      <div className="setting-field">
+        <label className="setting-label" htmlFor="imageProviderSelect">
+          Провайдер
+        </label>
+        <select
+          id="imageProviderSelect"
+          className="settings-select"
+          value={activeProviderId}
+          onChange={(event) => handleProviderChange(event.target.value)}
+        >
+          {providersToRender.map(provider => (
+            <option key={provider.id} value={provider.id}>
+              {provider.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
+      <div className="settings-provider-card active">
+        <div className="setting-group">
+          <label className="setting-label">
+            <input
+              type="checkbox"
+              checked={activeForm.activated}
+              onChange={(event) => toggleActivation(event.target.checked)}
+            />
+            Активировать провайдера
+          </label>
+          <div className="setting-description">
+            Провайдер будет доступен в /images только когда активирован и сохранён ключ.
+          </div>
+        </div>
+
+        <div className="setting-group">
+          <label className="setting-label">API Key ({activeProviderLabel})</label>
+          <div className="input-with-icon">
+            <input
+              type={activeForm.showKey ? 'text' : 'password'}
+              value={activeForm.keyValue}
+              onChange={(e) => updateForm(activeProviderId, { keyValue: e.target.value })}
+              placeholder="sk-..."
+              className="settings-input"
+            />
+            <button
+              type="button"
+              className="input-icon-button"
+              onClick={() => updateForm(activeProviderId, { showKey: !activeForm.showKey })}
+              title={activeForm.showKey ? 'Скрыть API ключ' : 'Показать API ключ'}
+            >
+              {activeForm.showKey ? <ShieldOff className="icon" /> : <ShieldCheck className="icon" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="setting-group toggle-row">
+          <label className="setting-label">
+            <input
+              type="checkbox"
+              checked={activeForm.encrypt}
+              onChange={(event) => toggleEncryption(event.target.checked)}
+            />
+            Шифровать в IndexedDB (PIN)
+          </label>
+        </div>
+
+        {activeForm.needsPin && (
           <div className="setting-group">
-            <label className="setting-label">API Key ({activeProviderLabel})</label>
-            <div className="input-with-icon">
+            <label className="setting-label">PIN для расшифровки</label>
+            <div className="pin-row">
               <input
-                type={activeForm.showKey ? 'text' : 'password'}
-                value={activeForm.keyValue}
-                onChange={(e) => updateForm(activeProviderId, { keyValue: e.target.value })}
-                placeholder="sk-..."
+                type="password"
+                value={activeForm.pinForUnlock}
+                onChange={(e) => updateForm(activeProviderId, { pinForUnlock: e.target.value })}
+                placeholder="Введите PIN"
                 className="settings-input"
               />
-              <button
-                type="button"
-                className="input-icon-button"
-                onClick={() => updateForm(activeProviderId, { showKey: !activeForm.showKey })}
-                title={activeForm.showKey ? 'Скрыть API ключ' : 'Показать API ключ'}
-              >
-                {activeForm.showKey ? <ShieldOff className="icon" /> : <ShieldCheck className="icon" />}
+              <button type="button" className="settings-button secondary" onClick={handleUnlock} disabled={activeForm.isBusy}>
+                <KeyRound className="icon" /> Расшифровать
               </button>
             </div>
           </div>
+        )}
 
-          <div className="setting-group toggle-row">
-            <label className="setting-label">
+        {activeForm.encrypt && (
+          <div className="setting-group">
+            <label className="setting-label">PIN для сохранения</label>
+            <div className="pin-row">
               <input
-                type="checkbox"
-                checked={activeForm.encrypt}
-                onChange={(event) => toggleEncryption(event.target.checked)}
+                type="password"
+                value={activeForm.pinForSave}
+                onChange={(e) => updateForm(activeProviderId, { pinForSave: e.target.value })}
+                placeholder="PIN"
+                className="settings-input"
               />
-              Шифровать в IndexedDB (PIN)
-            </label>
-          </div>
-
-          {activeForm.needsPin && (
-            <div className="setting-group">
-              <label className="setting-label">PIN для расшифровки</label>
-              <div className="pin-row">
-                <input
-                  type="password"
-                  value={activeForm.pinForUnlock}
-                  onChange={(e) => updateForm(activeProviderId, { pinForUnlock: e.target.value })}
-                  placeholder="Введите PIN"
-                  className="settings-input"
-                />
-                <button type="button" className="settings-button secondary" onClick={handleUnlock} disabled={activeForm.isBusy}>
-                  <KeyRound className="icon" /> Расшифровать
-                </button>
-              </div>
+              <input
+                type="password"
+                value={activeForm.pinConfirm}
+                onChange={(e) => updateForm(activeProviderId, { pinConfirm: e.target.value })}
+                placeholder="Подтверждение"
+                className="settings-input"
+              />
             </div>
-          )}
-
-          {activeForm.encrypt && (
-            <div className="setting-group">
-              <label className="setting-label">PIN для сохранения</label>
-              <div className="pin-row">
-                <input
-                  type="password"
-                  value={activeForm.pinForSave}
-                  onChange={(e) => updateForm(activeProviderId, { pinForSave: e.target.value })}
-                  placeholder="PIN"
-                  className="settings-input"
-                />
-                <input
-                  type="password"
-                  value={activeForm.pinConfirm}
-                  onChange={(e) => updateForm(activeProviderId, { pinConfirm: e.target.value })}
-                  placeholder="Подтверждение"
-                  className="settings-input"
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="settings-actions">
-            <button type="button" className="settings-button" onClick={handleSave} disabled={activeForm.isBusy}>
-              Сохранить
-            </button>
-            <button type="button" className="settings-button secondary" onClick={handleValidate} disabled={activeForm.isBusy}>
-              Проверить ключ
-            </button>
-            <button type="button" className="settings-button danger" onClick={handleReset} disabled={activeForm.isBusy}>
-              Удалить ключ
-            </button>
           </div>
+        )}
+
+        <div className="settings-actions">
+          <button type="button" className="settings-button" onClick={handleSave} disabled={activeForm.isBusy}>
+            Сохранить
+          </button>
+          <button type="button" className="settings-button secondary" onClick={handleValidate} disabled={activeForm.isBusy}>
+            Проверить ключ
+          </button>
+          <button type="button" className="settings-button danger" onClick={handleReset} disabled={activeForm.isBusy}>
+            Удалить ключ
+          </button>
+        </div>
 
         {activeForm.feedback && (
           <div className={`feedback feedback-${activeForm.feedback.type}`}>

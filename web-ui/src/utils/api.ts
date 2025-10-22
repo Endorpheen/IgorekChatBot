@@ -245,7 +245,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   };
 };
 
-export const callAgent = async (payload: { message: string; thread_id?: string; user_id?: string; history?: ChatMessage[]; openRouterApiKey?: string; openRouterModel?: string }) => {
+export const callAgent = async (payload: { message: string; thread_id?: string; user_id?: string; history?: ChatMessage[]; providerType?: 'openrouter' | 'agentrouter'; openRouterApiKey?: string; openRouterModel?: string; agentRouterApiKey?: string; agentRouterModel?: string; agentRouterBaseUrl?: string }) => {
   const systemPrompt = (typeof window !== 'undefined' ? localStorage.getItem('systemPrompt') : null)?.trim();
 
   const messages: AgentApiMessage[] = [];
@@ -279,7 +279,9 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(requestBody),
   });
 
@@ -289,7 +291,7 @@ export const callAgent = async (payload: { message: string; thread_id?: string; 
   if (!response.ok) {
     const errorText = await response.text();
     console.error('[CALL AGENT] Error response:', errorText);
-    throw new Error(`Agent API error: ${response.status} ${errorText}`);
+    throw new Error(`OpenAI Compatible API error: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as ChatResponse;
@@ -337,6 +339,7 @@ export const createImageGenerationJob = async (payload: {
       'X-Client-Session': getImageSessionId(),
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(requestBody),
   });
 
@@ -354,6 +357,7 @@ export const fetchImageJobStatus = async (jobId: string): Promise<ImageJobStatus
       Accept: 'application/json',
       'X-Client-Session': getImageSessionId(),
     },
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -372,6 +376,7 @@ export const validateProviderKey = async (providerId: string, apiKey: string): P
       'X-Client-Session': getImageSessionId(),
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify({ provider: providerId }),
   });
 
@@ -386,6 +391,7 @@ export const fetchProviderList = async (): Promise<ProviderListResponse> => {
     headers: {
       Accept: 'application/json',
     },
+    credentials: 'include',
   });
   if (!response.ok) {
     await parseErrorResponse(response);
@@ -398,6 +404,36 @@ export const fetchProviderModels = async (providerId: string, apiKey: string, op
   url.searchParams.set('provider', providerId);
   if (options?.force) {
     url.searchParams.set('force', '1');
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-Image-Key': apiKey,
+      'X-Client-Session': getImageSessionId(),
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<ProviderModelsResponse>;
+};
+
+export const searchProviderModels = async (
+  providerId: string,
+  apiKey: string,
+  query: string,
+  options?: { limit?: number },
+): Promise<ProviderModelsResponse> => {
+  const url = new URL(buildApiUrl('/image/providers/search'));
+  url.searchParams.set('provider', providerId);
+  url.searchParams.set('query', query);
+  if (options?.limit) {
+    url.searchParams.set('limit', String(options.limit));
   }
 
   const response = await fetch(url.toString(), {
@@ -467,7 +503,11 @@ export const uploadImagesForAnalysis = async ({ files, threadId, history, settin
 
   const response = await fetch(buildApiUrl('/image/analyze'), {
     method: 'POST',
+    headers: {
+      ...buildCsrfHeader(),
+    },
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -476,6 +516,87 @@ export const uploadImagesForAnalysis = async ({ files, threadId, history, settin
   }
 
   return (await response.json()) as ImageUploadResponse;
+};
+
+interface AnalyzeDocumentParams {
+  file: File;
+  query: string;
+  threadId: string;
+  history: ChatMessage[];
+  settings: ThreadSettings;
+  systemPrompt?: string | null;
+  provider: 'openrouter' | 'agentrouter';
+}
+
+interface DocumentAnalysisPayload {
+  status: string;
+  response: string;
+  thread_id?: string;
+  document?: {
+    filename: string;
+    mime_type: string;
+    size: number;
+  };
+}
+
+export const analyzeDocument = async ({
+  file,
+  query,
+  threadId,
+  history,
+  settings,
+  systemPrompt,
+  provider,
+}: AnalyzeDocumentParams): Promise<DocumentAnalysisPayload> => {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  formData.append('message', query);
+  formData.append('thread_id', threadId);
+  formData.append('history', JSON.stringify(history));
+
+  const historyLimit = Math.max(1, Math.min(50, settings.historyMessageCount ?? 5));
+  formData.append('history_message_count', String(historyLimit));
+
+  if (systemPrompt && systemPrompt.trim()) {
+    formData.append('system_prompt', systemPrompt);
+  }
+
+  if (provider === 'agentrouter') {
+    formData.append('provider_type', 'agentrouter');
+    if (settings.agentRouterApiKey) {
+      formData.append('agent_router_api_key', settings.agentRouterApiKey);
+    }
+    if (settings.agentRouterModel) {
+      formData.append('agent_router_model', settings.agentRouterModel);
+    }
+    if (settings.agentRouterBaseUrl) {
+      formData.append('agent_router_base_url', settings.agentRouterBaseUrl);
+    }
+  } else {
+    formData.append('provider_type', 'openrouter');
+    if (settings.openRouterApiKey) {
+      formData.append('open_router_api_key', settings.openRouterApiKey);
+    }
+    if (settings.openRouterModel) {
+      formData.append('open_router_model', settings.openRouterModel);
+    }
+  }
+
+  const response = await fetch(buildApiUrl('/file/analyze'), {
+    method: 'POST',
+    headers: {
+      ...buildCsrfHeader(),
+    },
+    body: formData,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Document analysis error: ${response.status} ${errorText}`);
+  }
+
+  return (await response.json()) as DocumentAnalysisPayload;
 };
 
 export const callMCP = async (method: string, params: Record<string, unknown>) => {
@@ -554,19 +675,14 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
 };
 
 export const mcpSearch = async (payload: { query: string; [key: string]: any }): Promise<any> => {
-  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
-  if (!token) {
-    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
-  }
-
   const response = await fetch(buildApiUrl('/api/mcp/search'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'Authorization': `Bearer ${token}`,
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   });
 
@@ -578,19 +694,14 @@ export const mcpSearch = async (payload: { query: string; [key: string]: any }):
 };
 
 export const mcpFetch = async (payload: { id: string; [key: string]: any }): Promise<any> => {
-  const token = import.meta.env.VITE_MCP_API_AUTH_TOKEN;
-  if (!token) {
-    throw new Error('VITE_MCP_API_AUTH_TOKEN is not configured in the environment.');
-  }
-
   const response = await fetch(buildApiUrl('/api/mcp/fetch'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'Authorization': `Bearer ${token}`,
       ...buildCsrfHeader(),
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   });
 
@@ -600,4 +711,3 @@ export const mcpFetch = async (payload: { id: string; [key: string]: any }): Pro
 
   return response.json();
 };
-

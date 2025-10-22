@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install --no-cache-dir fastapi uvicorn
+RUN pip install --no-cache-dir fastapi uvicorn pymupdf python-docx python-multipart
 
 RUN useradd --create-home --shell /bin/bash app
 

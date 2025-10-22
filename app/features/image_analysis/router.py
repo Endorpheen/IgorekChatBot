@@ -9,12 +9,15 @@ from pathlib import Path
 from typing import List
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
 
 from app.features.chat.service import THREAD_MODEL_OVERRIDES
 from app.features.image_analysis.service import build_image_conversation, call_openrouter_for_image
 from app.logging import get_logger
+from app.middlewares.security import _require_csrf_token
+from app.security_layer.dependencies import require_session
+from app.security_layer.rate_limiter import RateLimitConfig, get_rate_limiter
 from app.settings import ensure_upload_directory, get_settings
 
 router = APIRouter()
@@ -40,7 +43,7 @@ class ImageAnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
-@router.post("/image/analyze", response_model=ImageAnalysisResponse)
+@router.post("/image/analyze", response_model=ImageAnalysisResponse, include_in_schema=False)
 async def analyze_image_endpoint(
     request: Request,
     files: List[UploadFile] | None = File(default=None),
@@ -51,7 +54,21 @@ async def analyze_image_endpoint(
     open_router_model: str | None = Form(default=None),
     system_prompt: str | None = Form(default=None),
     history_message_count: int = Form(default=5),
+    session=Depends(require_session),
 ):
+    _require_csrf_token(request)
+    limiter = get_rate_limiter()
+    limiter.hit(
+        "image_analyze:session",
+        session.session_id,
+        RateLimitConfig(limit=settings.rate_limit_image_analyze_per_minute, window_seconds=60),
+    )
+    client_ip = request.client.host if request.client else "unknown"
+    limiter.hit(
+        "image_analyze:ip",
+        client_ip,
+        RateLimitConfig(limit=settings.rate_limit_image_analyze_per_minute, window_seconds=60),
+    )
     files = files or []
 
     if not files and not message.strip():

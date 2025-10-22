@@ -15,7 +15,6 @@ import {
 } from '../storage/togetherKeyStorage';
 import {
   deleteCatalog,
-  isStale,
   readCatalog,
   writeCatalog,
 } from '../storage/modelCatalogStorage';
@@ -27,6 +26,7 @@ import {
   fetchImageJobStatus,
   fetchProviderList,
   fetchProviderModels,
+  searchProviderModels,
   validateProviderKey,
 } from '../utils/api';
 import { getImageSessionId } from '../utils/session';
@@ -161,6 +161,10 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   const [modelId, setModelId] = useState<string | null>(storedStateRef.current.modelId);
   const [modelSearch, setModelSearch] = useState('');
   const [recommendedOnly, setRecommendedOnly] = useState(false);
+  const [searchResults, setSearchResults] = useState<ProviderModelSpec[] | null>(null);
+  const [isSearchingModels, setIsSearchingModels] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   const [prompt, setPrompt] = useState<string>(storedStateRef.current.prompt ?? '');
   const [width, setWidth] = useState<number | null>(storedStateRef.current.width ?? null);
@@ -181,7 +185,10 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
 
   const objectUrlRef = useRef<string | null>(null);
 
-  const selectedModel = useMemo(() => models.find(model => model.id === modelId) ?? null, [models, modelId]);
+  const selectedModel = useMemo(() => {
+    const source = searchResults ?? models;
+    return source.find(model => model.id === modelId) ?? null;
+  }, [searchResults, models, modelId]);
 
   const effectiveLimits = useMemo(() => {
     const limits = selectedModel?.limits ?? {};
@@ -230,19 +237,25 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
 
   const supportsMode = selectedModel?.capabilities?.supports_mode && (selectedModel.capabilities.modes?.length ?? 0) > 0;
 
-  const filteredModels = useMemo(() => {
-    const normalizedSearch = modelSearch.trim().toLowerCase();
-    return models.filter(model => {
-      if (recommendedOnly && !model.recommended) {
-        return false;
-      }
-      if (!normalizedSearch) {
-        return true;
-      }
-      return model.display_name.toLowerCase().includes(normalizedSearch) || model.id.toLowerCase().includes(normalizedSearch);
-    });
-  }, [models, modelSearch, recommendedOnly]);
+  const searchActive = isSearchingModels || searchResults !== null;
+  const displayedModels = useMemo(() => {
+    let list = searchActive ? (searchResults ?? []) : models;
 
+    if (!searchActive) {
+      const normalizedSearch = modelSearch.trim().toLowerCase();
+      if (normalizedSearch) {
+        list = list.filter(model => {
+          return model.display_name.toLowerCase().includes(normalizedSearch) || model.id.toLowerCase().includes(normalizedSearch);
+        });
+      }
+    }
+
+    if (recommendedOnly) {
+      list = list.filter(model => model.recommended);
+    }
+
+    return list;
+  }, [searchActive, searchResults, models, modelSearch, recommendedOnly]);
   const statusBadgeClass = useMemo(() => {
     const status = jobStatus?.status;
     if (!status) {
@@ -263,6 +276,12 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   }
   return downloadUrl.startsWith('http') ? downloadUrl : buildApiUrl(downloadUrl);
 }, [downloadUrl]);
+
+  const isLoadingModelOptions = modelsLoading || isSearchingModels;
+  const noModelsAvailable = !isLoadingModelOptions && displayedModels.length === 0;
+  const emptyModelsMessage = searchResults !== null
+    ? (searchError ? `Ошибка поиска: ${searchError}` : 'По запросу ничего не найдено.')
+    : 'Нет моделей, удовлетворяющих критериям.';
 
   const updateStoredState = useCallback((partial: Partial<StoredImageGenerationState>) => {
     const nextState: StoredImageGenerationState = {
@@ -286,6 +305,16 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   useEffect(() => {
     updateStoredState({});
   }, [prompt, width, height, steps, cfg, seed, mode, jobId, downloadUrl, providerId, modelId, updateStoredState]);
+
+  useEffect(() => {
+    const source = searchResults ?? models;
+    if (source.length === 0) {
+      return;
+    }
+    if (!modelId || !source.some(model => model.id === modelId)) {
+      setModelId(source[0]?.id ?? null);
+    }
+  }, [searchResults, models, modelId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,37 +414,51 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
       setModelId(null);
       return;
     }
+
     setModelsLoading(true);
+    setSearchError(null);
+    setSubmitError(null);
+
+    let cachedUsed = false;
     try {
-      const cached = await readCatalog(targetProviderId);
-      if (!force && cached && !isStale(cached)) {
-        setModels(cached.models);
-        if (!cached.models.some(model => model.id === modelId)) {
-          setModelId(cached.models[0]?.id ?? null);
+      if (!force) {
+        const cached = await readCatalog(targetProviderId);
+        if (cached && Array.isArray(cached.models) && cached.models.length > 0) {
+          const cachedModels = cached.models.map(model => ({ ...model, recommended: Boolean(model.recommended) }));
+          setModels(cachedModels);
+          if (!cachedModels.some(model => model.id === modelId)) {
+            setModelId(cachedModels[0]?.id ?? null);
+          }
+          cachedUsed = true;
         }
-        return;
       }
+
       const apiKey = await readProviderApiKey(targetProviderId);
       const fresh = await fetchProviderModels(targetProviderId, apiKey, { force });
-      const response = (fresh as ProviderModelsResponse).models;
-      setModels(response);
-      await writeCatalog(targetProviderId, response);
-      if (!response.some(model => model.id === modelId)) {
-        setModelId(response[0]?.id ?? null);
+      const responseModels = (fresh as ProviderModelsResponse).models ?? [];
+      const normalizedModels = responseModels.map(model => ({ ...model, recommended: Boolean(model.recommended) }));
+
+      setModels(normalizedModels);
+      await writeCatalog(targetProviderId, normalizedModels);
+      if (!normalizedModels.some(model => model.id === modelId)) {
+        setModelId(normalizedModels[0]?.id ?? null);
       }
+      cachedUsed = false;
     } catch (error) {
       console.error('Не удалось получить список моделей:', error);
-      if (error instanceof ApiError) {
-        setSubmitError(error.message);
-      } else if (error instanceof Error) {
-        setSubmitError(error.message);
-      } else {
-        setSubmitError('Не удалось загрузить список моделей');
+      if (!cachedUsed) {
+        if (error instanceof ApiError) {
+          setSubmitError(error.message);
+        } else if (error instanceof Error) {
+          setSubmitError(error.message);
+        } else {
+          setSubmitError('Не удалось загрузить список моделей');
+        }
       }
     } finally {
       setModelsLoading(false);
     }
-  }, [modelId, providerKeys, readProviderApiKey]);
+  }, [modelId, providerKeys, readProviderApiKey, enabledProviders]);
 
   useEffect(() => {
     if (!providerList.length) {
@@ -538,6 +581,59 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
 
   const providerEnabled = enabledProviders[providerId] ?? isProviderEnabled(providerId);
   const keyAvailable = providerEnabled && (providerKeys[providerId]?.hasKey ?? false);
+
+  useEffect(() => {
+    const trimmedSearch = modelSearch.trim();
+    const isReplicate = providerId.toLowerCase() === 'replicate';
+
+    if (!isReplicate || !keyAvailable || trimmedSearch.length < 2) {
+      setSearchResults(null);
+      setIsSearchingModels(false);
+      setSearchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = ++searchRequestIdRef.current;
+    const timer = window.setTimeout(() => {
+      (async () => {
+        setIsSearchingModels(true);
+        setSearchError(null);
+        try {
+          const apiKey = await readProviderApiKey(providerId);
+          if (cancelled || searchRequestIdRef.current !== requestId) {
+            return;
+          }
+          const response = await searchProviderModels(providerId, apiKey, trimmedSearch, { limit: 50 });
+          console.log('Search results:', response);
+          if (!cancelled && searchRequestIdRef.current === requestId) {
+            setSearchResults(response.models ?? []);
+          }
+        } catch (error) {
+          console.error('Не удалось выполнить поиск моделей:', error);
+          if (!cancelled && searchRequestIdRef.current === requestId) {
+            setSearchResults([]);
+            if (error instanceof ApiError) {
+              setSearchError(error.message);
+            } else if (error instanceof Error) {
+              setSearchError(error.message);
+            } else {
+              setSearchError('Не удалось выполнить поиск моделей');
+            }
+          }
+        } finally {
+          if (!cancelled && searchRequestIdRef.current === requestId) {
+            setIsSearchingModels(false);
+          }
+        }
+      })();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [modelSearch, providerId, keyAvailable, readProviderApiKey]);
 
   const handleRefreshModels = async () => {
     try {
@@ -697,6 +793,9 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
                 setModelSearch('');
                 setRecommendedOnly(false);
                 setModelId(null);
+                setSearchResults(null);
+                setSearchError(null);
+                setIsSearchingModels(false);
               }}
             >
               {providerList.map(provider => (
@@ -712,7 +811,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
                 id="imageProviderRefresh"
                 className="settings-button secondary"
                 onClick={handleRefreshModels}
-                disabled={modelsLoading || !keyAvailable}
+                disabled={isLoadingModelOptions || !keyAvailable}
               >
                 <RefreshCcw className="icon" />
                 Обновить модели
@@ -750,21 +849,24 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
         </div>
 
         <div className="model-list">
-          {modelsLoading && <div className="model-loading"><Loader2 className="icon spin" /> Загрузка моделей...</div>}
-          {!modelsLoading && filteredModels.length === 0 && (
-            <div className="model-empty">Нет моделей, удовлетворяющих критериям.</div>
+          {isLoadingModelOptions && (
+            <div className="model-loading">
+              <Loader2 className="icon spin" /> {isSearchingModels ? 'Поиск моделей...' : 'Загрузка моделей...'}
+            </div>
           )}
-          {!modelsLoading && filteredModels.length > 0 && (
+          {noModelsAvailable && (
+            <div className="model-empty">{emptyModelsMessage}</div>
+          )}
+          {!isLoadingModelOptions && displayedModels.length > 0 && (
             <select
               className="settings-select"
               value={modelId ?? ''}
               onChange={(event) => setModelId(event.target.value)}
             >
               <option value="" disabled>Выберите модель</option>
-              {filteredModels.map(model => (
+              {displayedModels.map(model => (
                 <option key={model.id} value={model.id}>
-                  {model.display_name}
-                  {model.recommended ? ' ★' : ''}
+                  {`${model.recommended ? '★ ' : ''}${model.display_name}`}
                 </option>
               ))}
             </select>
@@ -800,7 +902,7 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
                 setWidth(option.width);
                 setHeight(option.height);
               }}
-              disabled={isGenerating || modelsLoading || !selectedModel}
+              disabled={isGenerating || isLoadingModelOptions || !selectedModel}
             >
               {sizeOptions.map(option => (
                 <option key={option.id} value={option.id}>
