@@ -18,7 +18,7 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
             CODE ORCHESTRATION by <span className="accent">end0</span>
           </div>
           <div>
-            <span className="version">V1.3.0</span>
+            <span className="version">V2.0.0</span>
           </div>
         </div>
         <a

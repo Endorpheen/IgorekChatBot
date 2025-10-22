@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.0] — 2025-10-22
+### Добавлено / Added
+- 🇷🇺 Серверный менеджер сессий с HMAC-подписанными токенами, выдачей cookie и совместимостью со старыми `X-Client-Session`.
+- 🇬🇧 Introduced a server-side session manager with HMAC-signed tokens, secure cookies, and legacy `X-Client-Session` compatibility.
+- 🇷🇺 Новый модуль безопасности (rate limiter, signed links, защита документации) вынесен в пакет `app.security_layer`.
+- 🇬🇧 Shipped a dedicated security layer package covering rate limiting, signed links, and protected documentation routes.
+- 🇷🇺 Контейнер `chatbot` теперь получает `DOCS_AUTH_USERNAME` и `DOCS_AUTH_PASSWORD` через `docker-compose.production.yml`.
+- 🇬🇧 The `chatbot` service now receives `DOCS_AUTH_USERNAME` and `DOCS_AUTH_PASSWORD` via `docker-compose.production.yml`.
+- 🇷🇺 Добавлен чек-лист `docs/security/preflight-2025-10-21.md` и обновлены инструкции по окружению.
+- 🇬🇧 Added the `docs/security/preflight-2025-10-21.md` preflight checklist and refreshed environment setup guidance.
+
+### Дополнительно / Notes
+- 🇷🇺 ✅ Следующая версия — v2.0.0.
+- 🇬🇧 ✅ Next release — v2.0.0.
+
 ## [1.3.0] — 2025-10-22
 ### Добавлено / Added
 - 🇷🇺 Поддержка загрузки и анализа документов (.pdf, .md, .txt, .docx).
