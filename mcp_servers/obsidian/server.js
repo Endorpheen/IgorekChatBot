@@ -24,6 +24,13 @@ app.options("*", cors(corsOptions), (req, res) => {
 const VAULT_PATH = process.env.VAULT_PATH || "/vault";
 const LOG_FILE = process.env.LOG_FILE || "/app/logs.json";
 const MCP_SECRET = process.env.MCP_SECRET || "";
+const MCP_LOG_ENABLED = String(process.env.MCP_LOG_ENABLED ?? "true").toLowerCase() !== "false";
+const MCP_LOG_MAX_SIZE_MB = Number(process.env.MCP_LOG_MAX_SIZE_MB ?? "20");
+const MCP_LOG_ROTATION_COUNT = Number(process.env.MCP_LOG_ROTATION_COUNT ?? "5");
+const LOG_DIR = path.dirname(LOG_FILE);
+const RAW_EXT = path.extname(LOG_FILE);
+const LOG_EXT = RAW_EXT || ".json";
+const LOG_BASENAME = RAW_EXT ? path.basename(LOG_FILE, RAW_EXT) : path.basename(LOG_FILE);
 
 // --- Auth config ---
 const JWT_SECRET = process.env.JWT_SECRET || "";
@@ -72,6 +79,10 @@ app.use((req, res, next) => {
 
 // --- Logger ---
 async function writeLog(entry) {
+  if (!MCP_LOG_ENABLED) {
+    return;
+  }
+
   const logEntry = {
     timestamp: new Date().toISOString(),
     ...entry,
@@ -91,9 +102,80 @@ async function writeLog(entry) {
 
   try {
     await fs.writeFile(LOG_FILE, JSON.stringify(logs, null, 2));
+    await rotateLogsIfNeeded();
   } catch (e) {
     console.error("Failed to write log:", e.message);
   }
+}
+
+async function rotateLogsIfNeeded() {
+  if (MCP_LOG_MAX_SIZE_MB <= 0) {
+    return;
+  }
+
+  try {
+    const stats = await fs.stat(LOG_FILE);
+    const maxBytes = MCP_LOG_MAX_SIZE_MB * 1024 * 1024;
+    if (stats.size < maxBytes) {
+      return;
+    }
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    console.error("Failed to inspect MCP log:", error?.message || error);
+    return;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const rotatedName = `${LOG_BASENAME}-${timestamp}${LOG_EXT}`;
+  const rotatedPath = path.join(LOG_DIR, rotatedName);
+
+  try {
+    await fs.rename(LOG_FILE, rotatedPath);
+    await fs.writeFile(LOG_FILE, "[]");
+    await pruneRotatedLogs();
+  } catch (error) {
+    console.error("Failed to rotate MCP log:", error?.message || error);
+  }
+}
+
+async function pruneRotatedLogs() {
+  if (MCP_LOG_ROTATION_COUNT <= 0) {
+    return;
+  }
+
+  let files = [];
+  try {
+    files = await fs.readdir(LOG_DIR, { withFileTypes: true });
+  } catch (error) {
+    console.error("Failed to enumerate MCP logs:", error?.message || error);
+    return;
+  }
+
+  const rotated = [];
+  for (const file of files) {
+    if (!file.isFile()) continue;
+    if (!file.name.startsWith(`${LOG_BASENAME}-`) || !file.name.endsWith(LOG_EXT)) continue;
+    try {
+      const stats = await fs.stat(path.join(LOG_DIR, file.name));
+      rotated.push({ name: file.name, mtimeMs: stats.mtimeMs });
+    } catch (error) {
+      console.warn("Failed to stat rotated log:", file.name, error?.message || error);
+    }
+  }
+
+  rotated.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const excess = rotated.slice(MCP_LOG_ROTATION_COUNT);
+  await Promise.all(
+    excess.map(async (file) => {
+      try {
+        await fs.unlink(path.join(LOG_DIR, file.name));
+      } catch (error) {
+        console.warn("Failed to remove rotated log:", file.name, error?.message || error);
+      }
+    }),
+  );
 }
 
 // --- Helpers ---
