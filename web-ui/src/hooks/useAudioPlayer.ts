@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 
 interface UseAudioPlayerProps {
   musicMuted: boolean;
@@ -7,17 +7,48 @@ interface UseAudioPlayerProps {
 export const useAudioPlayer = ({ musicMuted }: UseAudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const ensureAudioContext = useCallback(async () => {
+    if (typeof window === 'undefined' || typeof window.AudioContext === 'undefined') {
+      return null;
+    }
+
+    let context = audioContextRef.current;
+
+    if (!context || context.state === 'closed') {
+      try {
+        context = new window.AudioContext();
+        audioContextRef.current = context;
+      } catch (error) {
+        console.log('AudioContext init failed:', error);
+        audioContextRef.current = null;
+        return null;
+      }
+    }
+
+    if (context.state === 'suspended') {
+      try {
+        await context.resume();
+      } catch (error) {
+        console.log('AudioContext resume failed:', error);
+        return null;
+      }
+    }
+
+    return context;
+  }, []);
 
   useEffect(() => {
     const playAudio = async () => {
       if (audioRef.current && !musicMuted) {
         try {
-          audioRef.current.currentTime = 0;
-          audioRef.current.volume = 0.3;
-          if (window.AudioContext && new window.AudioContext().state === 'suspended') {
-            await new window.AudioContext().resume();
+          const context = await ensureAudioContext();
+          if (context) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.volume = 0.3;
+            await audioRef.current.play();
           }
-          await audioRef.current.play();
         } catch (error) {
           console.log('Audio playback failed:', error);
         }
@@ -39,8 +70,15 @@ export const useAudioPlayer = ({ musicMuted }: UseAudioPlayerProps) => {
       clearTimeout(timer);
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
+      const context = audioContextRef.current;
+      if (context && context.state !== 'closed') {
+        void context.close().catch((error) => {
+          console.log('AudioContext close failed:', error);
+        });
+      }
+      audioContextRef.current = null;
     };
-  }, [musicMuted]);
+  }, [ensureAudioContext, musicMuted]);
 
   return { audioRef, sendAudioRef };
 };
