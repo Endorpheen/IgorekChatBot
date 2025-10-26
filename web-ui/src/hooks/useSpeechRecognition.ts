@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseSpeechRecognitionProps {
   onResult: (transcript: string) => void;
@@ -7,52 +7,171 @@ interface UseSpeechRecognitionProps {
 
 export const useSpeechRecognition = ({ onResult, onError }: UseSpeechRecognitionProps) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const handlersAttachedRef = useRef(false);
 
-  useEffect(() => {
-    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const rec = new SpeechRecognition();
-      rec.lang = 'ru-RU';
-      rec.continuous = false;
-      rec.interimResults = false;
+  const detachHandlers = useCallback(() => {
+    const recognition = recognitionRef.current;
+    if (!recognition) {
+      return;
+    }
+    recognition.onstart = null;
+    recognition.onend = null;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    handlersAttachedRef.current = false;
+  }, []);
 
-      rec.onstart = () => setIsRecording(true);
-      rec.onend = () => setIsRecording(false);
-      rec.onresult = (event: SpeechRecognitionEvent) => {
-        const transcript = event.results[0][0].transcript;
-        onResult(transcript);
+  const handleFinalize = useCallback(() => {
+    setIsRecording(false);
+    detachHandlers();
+  }, [detachHandlers]);
+
+  const ensureRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      return recognitionRef.current;
+    }
+
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      console.warn('Speech Recognition not supported in this browser.');
+      return null;
+    }
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'ru-RU';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognitionRef.current = recognition;
+    return recognition;
+  }, []);
+
+  const attachHandlers = useCallback(
+    (recognition: SpeechRecognition) => {
+      if (handlersAttachedRef.current) {
+        return;
+      }
+
+      recognition.onstart = () => setIsRecording(true);
+      recognition.onend = handleFinalize;
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const firstResult = event.results[0];
+        const transcript = firstResult && firstResult[0] ? firstResult[0].transcript.trim() : '';
+
+        if (transcript.length > 0) {
+          onResult(transcript);
+        }
       };
-      rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error('Speech recognition error:', event.error);
         onError?.(event.error);
-        setIsRecording(false);
+        handleFinalize();
       };
-      setRecognition(rec);
-    } else {
-      console.warn('Speech Recognition not supported in this browser.');
-    }
-  }, [onResult, onError]);
 
-  const startRecognition = () => {
-    if (recognition && !isRecording) {
+      handlersAttachedRef.current = true;
+    },
+    [handleFinalize, onError, onResult],
+  );
+
+  const startRecognition = useCallback(() => {
+    if (isRecording) {
+      return;
+    }
+
+    const recognition = ensureRecognition();
+
+    if (!recognition) {
+      return;
+    }
+
+    attachHandlers(recognition);
+
+    try {
       recognition.start();
-    }
-  };
+    } catch (error) {
+      console.error('Speech recognition start error:', error);
+      onError?.(error instanceof Error ? error.message : String(error));
 
-  const stopRecognition = () => {
-    if (recognition && isRecording) {
-      recognition.stop();
+      if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') {
+        handleFinalize();
+      }
     }
-  };
+  }, [attachHandlers, ensureRecognition, handleFinalize, isRecording, onError]);
 
-  const toggleRecognition = () => {
+  const stopRecognition = useCallback(() => {
+    const recognition = recognitionRef.current;
+
+    if (!recognition) {
+      return;
+    }
+
+    if (isRecording) {
+      try {
+        recognition.stop();
+      } catch (error) {
+        console.error('Speech recognition stop error:', error);
+        onError?.(error instanceof Error ? error.message : String(error));
+      }
+    } else {
+      try {
+        recognition.abort();
+      } catch (error) {
+        console.error('Speech recognition abort error:', error);
+      }
+    }
+
+    handleFinalize();
+  }, [handleFinalize, isRecording, onError]);
+
+  const abortRecognition = useCallback(() => {
+    const recognition = recognitionRef.current;
+
+    if (!recognition) {
+      return;
+    }
+
+    try {
+      recognition.abort();
+    } catch (error) {
+      console.error('Speech recognition abort error:', error);
+    }
+
+    handleFinalize();
+  }, [handleFinalize]);
+
+  const toggleRecognition = useCallback(() => {
     if (isRecording) {
       stopRecognition();
     } else {
       startRecognition();
     }
-  };
+  }, [isRecording, startRecognition, stopRecognition]);
 
-  return { isRecording, toggleRecognition, recognition };
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        abortRecognition();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      abortRecognition();
+      recognitionRef.current = null;
+    };
+  }, [abortRecognition]);
+
+  return { isRecording, toggleRecognition, recognition: recognitionRef.current };
 };
