@@ -1,5 +1,18 @@
 # Changelog
 
+# Changelog
+
+## [2.0.1] — 2025-10-25
+### Добавлено / Added
+- 🇷🇺 Запущены фоновые задачи очистки: автоматическая ротация `image_jobs.sqlite`, удаление устаревших файлов `data/images` и ротация MCP-логов с configurable лимитами.
+- 🇬🇧 Introduced background maintenance: automatic pruning of `image_jobs.sqlite`, cleanup of aged `data/images` artifacts, and MCP log rotation with configurable limits.
+- 🇷🇺 Сервис-воркер теперь кэширует оболочку WebUI, обеспечивая офлайн-доступ и обновление статики по TTL.
+- 🇬🇧 Service worker now caches the WebUI shell, enabling offline access and refreshing static assets via TTL.
+
+### Изменено / Changed
+- 🇷🇺 Конфигурация IndexedDB унифицирована: версия `chatbotDB` фиксирована, `onupgradeneeded` создаёт только отсутствующие хранилища и логирует реальные апгрейды.
+- 🇬🇧 Unified IndexedDB configuration: `chatbotDB` version is fixed, `onupgradeneeded` creates missing stores only, and upgrade logs fire solely on actual schema changes.
+
 ## [2.0.0] — 2025-10-22
 ### Добавлено / Added
 - 🇷🇺 Серверный менеджер сессий с HMAC-подписанными токенами, выдачей cookie и совместимостью со старыми `X-Client-Session`.
