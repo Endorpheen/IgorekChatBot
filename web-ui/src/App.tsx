@@ -111,6 +111,7 @@ const AppContent = () => {
   const [isAwaitingImageDescription, setIsAwaitingImageDescription] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [musicMuted, setMusicMuted] = useState(false);
+  const [voiceAssistantEnabled, setVoiceAssistantEnabled] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [keyRefreshToken, setKeyRefreshToken] = useState(0);
 
@@ -281,6 +282,24 @@ const AppContent = () => {
   useEffect(() => {
     localStorage.setItem('roo_agent_thread_settings', JSON.stringify(threadSettings));
   }, [threadSettings]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        setVoiceAssistantEnabled(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     ensureCsrfToken();
@@ -633,7 +652,11 @@ const AppContent = () => {
                   refreshKeySignal={keyRefreshToken}
                 />
               </div>
-              <Footer openSettings={() => setIsSettingsOpen(true)} />
+              <Footer
+                openSettings={() => setIsSettingsOpen(true)}
+                voiceAssistantEnabled={voiceAssistantEnabled}
+                toggleVoiceAssistant={() => setVoiceAssistantEnabled((prev) => !prev)}
+              />
             </>
           ) : isMcpRoute ? (
             <>
@@ -649,7 +672,11 @@ const AppContent = () => {
               <div className="page-content">
                 <McpPanel />
               </div>
-              <Footer openSettings={() => setIsSettingsOpen(true)} />
+              <Footer
+                openSettings={() => setIsSettingsOpen(true)}
+                voiceAssistantEnabled={voiceAssistantEnabled}
+                toggleVoiceAssistant={() => setVoiceAssistantEnabled((prev) => !prev)}
+              />
             </>
           ) : (
             <>
@@ -684,6 +711,8 @@ const AppContent = () => {
                   openSettings={() => setIsSettingsOpen(true)}
                   audioEnabled={audioEnabled}
                   setAudioEnabled={setAudioEnabled}
+                  voiceAssistantEnabled={voiceAssistantEnabled}
+                  toggleVoiceAssistant={() => setVoiceAssistantEnabled((prev) => !prev)}
                 />
                 <ChatPanel
                   messages={messagesToRender}
@@ -704,7 +733,11 @@ const AppContent = () => {
                   removeAttachment={handleRemoveAttachment}
                 />
               </div>
-              <Footer openSettings={() => setIsSettingsOpen(true)} />
+              <Footer
+                openSettings={() => setIsSettingsOpen(true)}
+                voiceAssistantEnabled={voiceAssistantEnabled}
+                toggleVoiceAssistant={() => setVoiceAssistantEnabled((prev) => !prev)}
+              />
             </>
           )}
         </div>

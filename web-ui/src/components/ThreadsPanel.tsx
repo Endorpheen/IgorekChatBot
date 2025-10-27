@@ -1,5 +1,6 @@
 import React from 'react';
-import { Command, MoreVertical, X, ArrowDownWideNarrow, Settings, Volume2, VolumeX } from 'lucide-react';
+import { Command, MoreVertical, X, ArrowDownWideNarrow, Settings, Volume2, VolumeX, Mic, MicOff } from 'lucide-react';
+import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
 import type { ThreadSettings } from '../types/settings';
 
 interface ThreadsPanelProps {
@@ -20,6 +21,8 @@ interface ThreadsPanelProps {
   openSettings: () => void;
   audioEnabled: boolean;
   setAudioEnabled: (enabled: boolean) => void;
+  voiceAssistantEnabled: boolean;
+  toggleVoiceAssistant: () => void;
 }
 
 const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
@@ -40,6 +43,8 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
   openSettings,
   audioEnabled,
   setAudioEnabled,
+  voiceAssistantEnabled,
+  toggleVoiceAssistant,
 }) => {
   return (
     <>
@@ -157,10 +162,19 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
             {audioEnabled ? <Volume2 className="icon" /> : <VolumeX className="icon" />}
             {audioEnabled ? 'Озвучка вкл.' : 'Озвучка выкл.'}
           </button>
+          <button
+            className="command-button mobile-only"
+            type="button"
+            onClick={toggleVoiceAssistant}
+            title={voiceAssistantEnabled ? 'Отключить голосового ассистента' : 'Включить голосового ассистента'}
+          >
+            {voiceAssistantEnabled ? <MicOff className="icon" /> : <Mic className="icon" />}
+            {voiceAssistantEnabled ? 'Ассистент выкл.' : 'Ассистент вкл.'}
+          </button>
         </div>
-        {/* <div className="mobile-widget">
-          <ElevenLabsConvaiWidget />
-        </div> */}
+        <div className="mobile-widget">
+          <ElevenLabsConvaiWidget active={voiceAssistantEnabled} />
+        </div>
       </aside>
     </>
   );
