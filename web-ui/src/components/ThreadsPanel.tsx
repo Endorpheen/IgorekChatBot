@@ -1,6 +1,5 @@
 import React from 'react';
 import { Command, MoreVertical, X, ArrowDownWideNarrow, Settings, Volume2, VolumeX } from 'lucide-react';
-import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
 import type { ThreadSettings } from '../types/settings';
 
 interface ThreadsPanelProps {
@@ -159,9 +158,9 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
             {audioEnabled ? 'Озвучка вкл.' : 'Озвучка выкл.'}
           </button>
         </div>
-        <div className="mobile-widget">
+        {/* <div className="mobile-widget">
           <ElevenLabsConvaiWidget />
-        </div>
+        </div> */}
       </aside>
     </>
   );

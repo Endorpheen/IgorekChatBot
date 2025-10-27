@@ -1,6 +1,6 @@
 import React from 'react';
 import { Settings, Github } from 'lucide-react';
-import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
+
 
 interface FooterProps {
   openSettings: () => void;
@@ -42,9 +42,9 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
       </div>
 
       <div className="footer-secondary">
-        <div className="desktop-widget">
+        {/* <div className="desktop-widget">
           <ElevenLabsConvaiWidget />
-        </div>
+        </div> */}
         <div className="support-project">
           <img src="/web-ui/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
           <span

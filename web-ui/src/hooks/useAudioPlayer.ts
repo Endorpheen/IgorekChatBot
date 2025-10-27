@@ -41,6 +41,9 @@ export const useAudioPlayer = ({ musicMuted }: UseAudioPlayerProps) => {
 
   useEffect(() => {
     const playAudio = async () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       if (audioRef.current && !musicMuted) {
         try {
           const context = await ensureAudioContext();
@@ -58,18 +61,38 @@ export const useAudioPlayer = ({ musicMuted }: UseAudioPlayerProps) => {
     const timer = setTimeout(playAudio, 100);
 
     const handleInteraction = () => {
-      if (audioRef.current && audioRef.current.paused && !musicMuted) {
+      if (audioRef.current && audioRef.current.paused && !musicMuted && document.visibilityState === 'visible') {
         playAudio();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (audioRef.current && !audioRef.current.paused) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
+        const context = audioContextRef.current;
+        if (context && context.state !== 'closed') {
+          void context.close().catch((error) => {
+            console.log('AudioContext close failed:', error);
+          });
+        }
+        audioContextRef.current = null;
+      } else if (!musicMuted && audioRef.current?.paused) {
+        void playAudio();
       }
     };
 
     document.addEventListener('click', handleInteraction);
     document.addEventListener('keydown', handleInteraction);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       const context = audioContextRef.current;
       if (context && context.state !== 'closed') {
         void context.close().catch((error) => {
