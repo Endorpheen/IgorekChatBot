@@ -11,7 +11,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -139,6 +139,15 @@ class ImageGenerationManager:
         self.model_cache_ttl = max(60, int(os.getenv("IMAGE_MODEL_CACHE_TTL", str(60 * 20))))
         self.breaker_threshold = max(1, int(os.getenv("IMAGE_BREAKER_THRESHOLD", "3")))
         self.breaker_cooldown = max(1, int(os.getenv("IMAGE_BREAKER_COOLDOWN", "60")))
+        self.cleanup_interval = max(0, int(os.getenv("IMAGE_CLEANUP_INTERVAL_SECONDS", str(24 * 3600))))
+        self.job_ttl_days = max(0, int(os.getenv("IMAGE_JOB_TTL_DAYS", "7")))
+        self.result_ttl_days = max(0, int(os.getenv("IMAGE_CLEANUP_TTL_DAYS", "30")))
+        self.max_storage_bytes = max(
+            0,
+            int(float(os.getenv("IMAGE_MAX_STORAGE_MB", "0")) * 1024 * 1024),
+        )
+        self.orphan_grace_seconds = max(0, int(os.getenv("IMAGE_ORPHAN_GRACE_SECONDS", "300")))
+        self.vacuum_on_cleanup = os.getenv("IMAGE_CLEANUP_VACUUM", "true").lower() not in {"false", "0", "no"}
 
         self._queue: asyncio.Queue[ImageJobPayload] | None = None
         self._queue_lock: asyncio.Lock | None = None
@@ -151,6 +160,7 @@ class ImageGenerationManager:
         self._model_cache: Dict[Tuple[str, str], ModelCacheEntry] = {}
         self._adapters: Dict[str, ImageProviderAdapter] = {}
         self._db_lock = threading.Lock()
+        self._cleanup_task: Optional[asyncio.Task[None]] = None
 
     async def startup(self) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -169,8 +179,21 @@ class ImageGenerationManager:
             self.queue_limit,
             self.active_limit,
         )
+        try:
+            await self._run_cleanup_once(initial=True)
+        except Exception:  # pragma: no cover - защита от неожиданных сбоев
+            logger.exception("[IMAGE CLEANUP] Initial cleanup failed")
+        if self.cleanup_interval > 0:
+            self._cleanup_task = asyncio.create_task(self._cleanup_worker())
 
     async def shutdown(self) -> None:
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
         for task in self._workers:
             task.cancel()
         for task in self._workers:
@@ -388,6 +411,204 @@ class ImageGenerationManager:
                 }
             )
         return providers
+
+    async def _cleanup_worker(self) -> None:
+        interval = max(self.cleanup_interval, 300)
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                await self._run_cleanup_once()
+            except asyncio.CancelledError:
+                break
+            except Exception:  # pragma: no cover - защита от неожиданных сбоев
+                logger.exception("[IMAGE CLEANUP] Scheduled cleanup failed")
+
+    async def _run_cleanup_once(self, *, initial: bool = False) -> None:
+        await asyncio.to_thread(self._perform_cleanup, initial)
+
+    def _perform_cleanup(self, initial: bool) -> None:
+        job_stats = self._cleanup_jobs()
+        file_stats = self._cleanup_result_files()
+        total_jobs_removed = (
+            job_stats["removed_by_age"] + job_stats["removed_missing"] + job_stats["removed_stuck"]
+        )
+        freed_mb = file_stats["removed_bytes"] / (1024 * 1024) if file_stats["removed_bytes"] else 0.0
+        total_mb = file_stats["total_bytes"] / (1024 * 1024) if file_stats["total_bytes"] else 0.0
+        logger.info(
+            "[IMAGE CLEANUP] initial=%s jobs_removed=%s (age=%s, missing=%s, queued=%s) "
+            "vacuum=%s files_removed=%s (orphan=%s, ttl=%s, quota=%s) freed_mb=%.2f total_mb=%.2f",
+            initial,
+            total_jobs_removed,
+            job_stats["removed_by_age"],
+            job_stats["removed_missing"],
+            job_stats["removed_stuck"],
+            job_stats["vacuum"],
+            file_stats["removed"],
+            file_stats["reasons"]["orphan"],
+            file_stats["reasons"]["ttl"],
+            file_stats["reasons"]["quota"],
+            freed_mb,
+            total_mb,
+        )
+
+    def _cleanup_jobs(self) -> Dict[str, int]:
+        stats = {
+            "removed_by_age": 0,
+            "removed_missing": 0,
+            "removed_stuck": 0,
+            "vacuum": False,
+        }
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, timeout=10)
+            try:
+                conn.row_factory = sqlite3.Row
+                if self.job_ttl_days > 0:
+                    cutoff = self._isoformat(self._utcnow() - timedelta(days=self.job_ttl_days))
+                    cursor = conn.execute(
+                        "DELETE FROM image_jobs WHERE status IN ('done','error') AND updated_at < ?",
+                        (cutoff,),
+                    )
+                    stats["removed_by_age"] += max(cursor.rowcount or 0, 0)
+                    cursor = conn.execute(
+                        "DELETE FROM image_jobs WHERE status = 'queued' AND updated_at < ?",
+                        (cutoff,),
+                    )
+                    stats["removed_stuck"] += max(cursor.rowcount or 0, 0)
+
+                rows = conn.execute(
+                    "SELECT job_id, result_path FROM image_jobs WHERE status IN ('done','error')"
+                ).fetchall()
+                missing_ids: list[tuple[str]] = []
+                for row in rows:
+                    job_id = row["job_id"]
+                    result_path = row["result_path"]
+                    if not result_path:
+                        missing_ids.append((job_id,))
+                        continue
+                    if not Path(result_path).is_file():
+                        missing_ids.append((job_id,))
+                if missing_ids:
+                    conn.executemany("DELETE FROM image_jobs WHERE job_id = ?", missing_ids)
+                    stats["removed_missing"] += len(missing_ids)
+
+                conn.commit()
+                total_removed = stats["removed_by_age"] + stats["removed_missing"] + stats["removed_stuck"]
+                if total_removed > 0 and self.vacuum_on_cleanup:
+                    conn.execute("VACUUM")
+                    stats["vacuum"] = True
+            finally:
+                conn.close()
+        return stats
+
+    def _cleanup_result_files(self) -> Dict[str, Any]:
+        stats = {
+            "removed": 0,
+            "removed_bytes": 0,
+            "total_bytes": 0,
+            "reasons": {"orphan": 0, "ttl": 0, "quota": 0},
+        }
+        if not self.output_dir.exists():
+            return stats
+
+        now = time.time()
+        entries: list[dict[str, Any]] = []
+        for path in self.output_dir.glob("**/*"):
+            if not path.is_file():
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            resolved = path.resolve()
+            entries.append({"path": path, "resolved": resolved, "size": stat.st_size, "mtime": stat.st_mtime})
+            stats["total_bytes"] += stat.st_size
+
+        rows: list[sqlite3.Row] = []
+        with self._db_lock:
+            conn = sqlite3.connect(self.db_path, timeout=10)
+            try:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT job_id, status, result_path FROM image_jobs "
+                    "WHERE result_path IS NOT NULL AND result_path != ''"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        referenced: Dict[Path, Dict[str, Any]] = {}
+        for row in rows:
+            path = Path(row["result_path"]).resolve()
+            referenced[path] = {"job_id": row["job_id"], "status": row["status"]}
+
+        removed_paths: set[Path] = set()
+        ttl_seconds = self.result_ttl_days * 24 * 3600 if self.result_ttl_days > 0 else 0
+        orphan_grace = self.orphan_grace_seconds
+
+        def _remove_entry(entry: dict[str, Any], reason: str) -> None:
+            path: Path = entry["path"]
+            resolved_path: Path = entry["resolved"]
+            if resolved_path in removed_paths:
+                return
+            try:
+                path.unlink()
+            except OSError as exc:
+                logger.warning("[IMAGE CLEANUP] Failed to delete %s: %s", path, exc)
+                return
+            removed_paths.add(resolved_path)
+            stats["removed"] += 1
+            stats["removed_bytes"] += entry["size"]
+            stats["total_bytes"] -= entry["size"]
+            stats["reasons"][reason] += 1
+            if stats["total_bytes"] < 0:
+                stats["total_bytes"] = 0
+
+        # Удаляем осиротевшие файлы, которых нет в базе (за исключением совсем свежих)
+        if orphan_grace > 0:
+            orphan_cutoff = now - orphan_grace
+        else:
+            orphan_cutoff = None
+        for entry in entries:
+            resolved_path = entry["resolved"]
+            if resolved_path in referenced:
+                continue
+            if orphan_cutoff is not None and entry["mtime"] > orphan_cutoff:
+                continue
+            _remove_entry(entry, "orphan")
+
+        # Удаляем старые файлы (TTL) только для завершённых задач
+        if ttl_seconds > 0:
+            ttl_cutoff = now - ttl_seconds
+            for entry in entries:
+                if entry["resolved"] in removed_paths:
+                    continue
+                if entry["mtime"] >= ttl_cutoff:
+                    continue
+                ref = referenced.get(entry["resolved"])
+                if not ref or ref["status"] not in {"done", "error"}:
+                    continue
+                _remove_entry(entry, "ttl")
+
+        # Контроль общего размера
+        if self.max_storage_bytes > 0 and stats["total_bytes"] > self.max_storage_bytes:
+            candidates = sorted(
+                (entry for entry in entries if entry["resolved"] not in removed_paths),
+                key=lambda item: item["mtime"],
+            )
+            for entry in candidates:
+                if stats["total_bytes"] <= self.max_storage_bytes:
+                    break
+                ref = referenced.get(entry["resolved"])
+                if ref and ref["status"] not in {"done", "error"}:
+                    continue
+                _remove_entry(entry, "quota")
+            if stats["total_bytes"] > self.max_storage_bytes:
+                logger.warning(
+                    "[IMAGE CLEANUP] Unable to reduce image storage below %s bytes (current=%s)",
+                    self.max_storage_bytes,
+                    stats["total_bytes"],
+                )
+
+        return stats
 
     # Внутренние методы --------------------------------------------------
 

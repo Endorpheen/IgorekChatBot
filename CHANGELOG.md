@@ -1,5 +1,29 @@
 # Changelog
 
+# Changelog
+
+## [2.0.2] — 2025-10-26
+### Изменено / Changed
+- 🇷🇺 Виджет ElevenLabs загружается по требованию, вручную включается пользователем и выключается при скрытой вкладке, поэтому вкладка браузера больше не держит CPU в фоне.
+- 🇬🇧 The ElevenLabs widget now loads on demand, only when explicitly enabled, and shuts down once the tab becomes hidden, so the browser tab no longer burns CPU in the background.
+- 🇷🇺 Аудиоплеер WebUI закрывает `AudioContext` при скрытии вкладки и возобновляет звук только когда пользователь возвращается.
+- 🇬🇧 The WebUI audio player now closes its `AudioContext` when the tab is hidden and resumes playback only after the user comes back.
+
+### Исправлено / Fixed
+- 🇷🇺 Опрос статуса генерации изображений приостанавливается в фоне и возобновляется после возвращения, что предотвращает лишние таймеры.
+- 🇬🇧 Image generation status polling pauses while the tab is hidden and resumes on return, preventing runaway timers.
+
+## [2.0.1] — 2025-10-25
+### Добавлено / Added
+- 🇷🇺 Запущены фоновые задачи очистки: автоматическая ротация `image_jobs.sqlite`, удаление устаревших файлов `data/images` и ротация MCP-логов с configurable лимитами.
+- 🇬🇧 Introduced background maintenance: automatic pruning of `image_jobs.sqlite`, cleanup of aged `data/images` artifacts, and MCP log rotation with configurable limits.
+- 🇷🇺 Сервис-воркер теперь кэширует оболочку WebUI, обеспечивая офлайн-доступ и обновление статики по TTL.
+- 🇬🇧 Service worker now caches the WebUI shell, enabling offline access and refreshing static assets via TTL.
+
+### Изменено / Changed
+- 🇷🇺 Конфигурация IndexedDB унифицирована: версия `chatbotDB` фиксирована, `onupgradeneeded` создаёт только отсутствующие хранилища и логирует реальные апгрейды.
+- 🇬🇧 Unified IndexedDB configuration: `chatbotDB` version is fixed, `onupgradeneeded` creates missing stores only, and upgrade logs fire solely on actual schema changes.
+
 ## [2.0.0] — 2025-10-22
 ### Добавлено / Added
 - 🇷🇺 Серверный менеджер сессий с HMAC-подписанными токенами, выдачей cookie и совместимостью со старыми `X-Client-Session`.

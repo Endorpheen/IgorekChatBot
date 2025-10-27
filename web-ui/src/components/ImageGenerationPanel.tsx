@@ -184,6 +184,8 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   const [isFetchingKey, setIsFetchingKey] = useState(false);
 
   const objectUrlRef = useRef<string | null>(null);
+  const pollTimeoutRef = useRef<number | null>(null);
+  const pendingPollRef = useRef<(() => void) | null>(null);
 
   const selectedModel = useMemo(() => {
     const source = searchResults ?? models;
@@ -539,9 +541,44 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
     if (!jobId) {
       return;
     }
+
     let cancelled = false;
 
+    const clearScheduledPoll = () => {
+      if (pollTimeoutRef.current !== null) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+      pendingPollRef.current = null;
+    };
+
+    const schedulePoll = () => {
+      pendingPollRef.current = poll;
+      pollTimeoutRef.current = window.setTimeout(() => {
+        pollTimeoutRef.current = null;
+        if (pendingPollRef.current) {
+          pendingPollRef.current();
+        }
+      }, 2500);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearScheduledPoll();
+        pendingPollRef.current = poll;
+      } else if (document.visibilityState === 'visible' && pendingPollRef.current) {
+        const restart = pendingPollRef.current;
+        pendingPollRef.current = null;
+        void restart();
+      }
+    };
+
     const poll = async () => {
+      if (cancelled || document.visibilityState === 'hidden') {
+        pendingPollRef.current = poll;
+        return;
+      }
+
       try {
         const status = await fetchImageJobStatus(jobId);
         if (cancelled) {
@@ -551,12 +588,14 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
         if (status.status === 'done') {
           setIsGenerating(false);
           setDownloadUrl(status.result_url ?? null);
+          clearScheduledPoll();
         } else if (status.status === 'error') {
           setIsGenerating(false);
           setStatusError(status.error_message ?? 'Генерация завершилась с ошибкой');
           setDownloadUrl(null);
+          clearScheduledPoll();
         } else {
-          setTimeout(poll, 2500);
+          schedulePoll();
         }
       } catch (error) {
         if (cancelled) {
@@ -569,13 +608,17 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
         }
         setIsGenerating(false);
         setDownloadUrl(null);
+        clearScheduledPoll();
       }
     };
 
-    poll();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    void poll();
 
     return () => {
       cancelled = true;
+      clearScheduledPoll();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [jobId]);
 

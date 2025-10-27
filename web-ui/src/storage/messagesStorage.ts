@@ -1,10 +1,18 @@
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import type { ChatMessage } from '../types/chat';
+import type { ChatMessage, ThreadSettings } from '../types/chat';
+import {
+  CHATBOT_DB_NAME,
+  CHATBOT_DB_VERSION,
+  MESSAGE_STORE_NAME,
+  MESSAGE_BY_THREAD_INDEX,
+  MESSAGE_BY_THREAD_TIME_INDEX,
+  SETTINGS_STORE_NAME,
+  ensureChatbotSchema,
+} from './chatbotDbConfig';
 
-const DB_NAME = 'chatbotDB';
-const STORE_NAME = 'messages';
-const THREAD_INDEX = 'by-thread';
-const THREAD_TIME_INDEX = 'by-thread-createdAt';
+const STORE_NAME = MESSAGE_STORE_NAME;
+const THREAD_INDEX = MESSAGE_BY_THREAD_INDEX;
+const THREAD_TIME_INDEX = MESSAGE_BY_THREAD_TIME_INDEX;
 const MESSAGE_LIMIT_PER_THREAD = 200;
 
 type MessageRole = ChatMessage['type'];
@@ -23,13 +31,17 @@ interface StoredMessage {
 }
 
 interface ChatbotDB extends DBSchema {
-  [STORE_NAME]: {
+  [MESSAGE_STORE_NAME]: {
     key: string;
     value: StoredMessage;
     indexes: {
       [THREAD_INDEX]: string;
       [THREAD_TIME_INDEX]: [string, string];
     };
+  };
+  [SETTINGS_STORE_NAME]: {
+    key: string;
+    value: ThreadSettings;
   };
 }
 
@@ -180,13 +192,9 @@ const getDb = async (): Promise<IDBPDatabase<ChatbotDB>> => {
   }
 
   if (!dbPromise) {
-    dbPromise = openDB<ChatbotDB>(DB_NAME, undefined, {
-      upgrade(database) {
-        if (!database.objectStoreNames.contains(STORE_NAME)) {
-          const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          store.createIndex(THREAD_INDEX, 'threadId');
-          store.createIndex(THREAD_TIME_INDEX, ['threadId', 'createdAt']);
-        }
+    dbPromise = openDB<ChatbotDB>(CHATBOT_DB_NAME, CHATBOT_DB_VERSION, {
+      upgrade(database, oldVersion, newVersion) {
+        ensureChatbotSchema(database, oldVersion, newVersion ?? CHATBOT_DB_VERSION);
       },
     });
   }

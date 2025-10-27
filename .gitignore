@@ -62,3 +62,6 @@ docker-compose.production.yml
 
 # Local agent instructions
 AGENTS.md
+
+# Generated analysis reports
+project_storage_analysis_*.md

@@ -1,12 +1,14 @@
 import React from 'react';
-import { Settings, Github } from 'lucide-react';
+import { Settings, Github, Mic, MicOff } from 'lucide-react';
 import ElevenLabsConvaiWidget from './ElevenLabsConvaiWidget';
 
 interface FooterProps {
   openSettings: () => void;
+  voiceAssistantEnabled: boolean;
+  toggleVoiceAssistant: () => void;
 }
 
-const Footer: React.FC<FooterProps> = ({ openSettings }) => {
+const Footer: React.FC<FooterProps> = ({ openSettings, voiceAssistantEnabled, toggleVoiceAssistant }) => {
   return (
     <footer className="app-footer">
       <div className="footer-primary">
@@ -18,7 +20,7 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
             CODE ORCHESTRATION by <span className="accent">end0</span>
           </div>
           <div>
-            <span className="version">V2.0.0</span>
+            <span className="version">V2.0.2</span>
           </div>
         </div>
         <a
@@ -43,7 +45,16 @@ const Footer: React.FC<FooterProps> = ({ openSettings }) => {
 
       <div className="footer-secondary">
         <div className="desktop-widget">
-          <ElevenLabsConvaiWidget />
+          <button
+            type="button"
+            className="settings-button footer-voice-button"
+            onClick={toggleVoiceAssistant}
+            title={voiceAssistantEnabled ? 'Отключить голосового ассистента' : 'Включить голосового ассистента'}
+          >
+            {voiceAssistantEnabled ? <MicOff className="icon" /> : <Mic className="icon" />}
+            {voiceAssistantEnabled ? 'Ассистент выкл.' : 'Ассистент вкл.'}
+          </button>
+          <ElevenLabsConvaiWidget active={voiceAssistantEnabled} />
         </div>
         <div className="support-project">
           <img src="/web-ui/metamaskqr.png" alt="MetaMask QR" className="support-icon" />
