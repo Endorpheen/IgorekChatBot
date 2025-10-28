@@ -34,7 +34,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          uv pip install pytest
+          uv pip install --system --break-system-packages pytest
           pytest
 
   frontend:
