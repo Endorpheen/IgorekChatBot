@@ -4,6 +4,7 @@ import fssync from "fs";
 import path from "path";
 import jwt from "jsonwebtoken";
 import cors from "cors";
+import { createVaultReader, VaultAccessError } from "./vaultAccess.js";
 
 const app = express();
 app.use(express.json());
@@ -31,6 +32,16 @@ const LOG_DIR = path.dirname(LOG_FILE);
 const RAW_EXT = path.extname(LOG_FILE);
 const LOG_EXT = RAW_EXT || ".json";
 const LOG_BASENAME = RAW_EXT ? path.basename(LOG_FILE, RAW_EXT) : path.basename(LOG_FILE);
+
+class McpError extends Error {
+  constructor(message, code, data) {
+    super(message);
+    this.code = code;
+    this.data = data;
+  }
+}
+
+const vaultReader = createVaultReader(VAULT_PATH);
 
 // --- Auth config ---
 const JWT_SECRET = process.env.JWT_SECRET || "";
@@ -225,16 +236,17 @@ async function searchVault(query, since) {
 
 async function fetchFile(id) {
   if (!id) throw new Error("No id");
-  const fullPath = path.join(VAULT_PATH, id);
-  const content = await fs.readFile(fullPath, "utf-8");
-  return content;
-}
-
-class McpError extends Error {
-  constructor(message, code, data) {
-    super(message);
-    this.code = code;
-    this.data = data;
+  try {
+    return await vaultReader.readFile(id);
+  } catch (error) {
+    if (error instanceof VaultAccessError) {
+      throw new McpError(error.message, -32005, {
+        id,
+        reason: error.reason,
+        details: error.data,
+      });
+    }
+    throw error;
   }
 }
 
