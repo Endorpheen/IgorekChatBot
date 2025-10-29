@@ -33,6 +33,9 @@ from .providers.base import (
 
 logger = logging.getLogger(__name__)
 
+FINGERPRINT_SALT = b"igorekchatbot:image:fingerprint:v1"
+FINGERPRINT_ITERATIONS = 600_000
+
 
 class ImageGenerationError(Exception):
     """Базовое исключение для ошибок генерации."""
@@ -1084,7 +1087,12 @@ class ImageGenerationManager:
 
     @staticmethod
     def _fingerprint(value: str) -> str:
-        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+        return hashlib.pbkdf2_hmac(
+            "sha256",
+            value.encode("utf-8"),
+            FINGERPRINT_SALT,
+            FINGERPRINT_ITERATIONS,
+        ).hex()
 
     @staticmethod
     def _looks_like_webp(image_bytes: bytes) -> bool:
