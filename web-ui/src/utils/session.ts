@@ -1,11 +1,24 @@
 const SESSION_STORAGE_KEY = 'image-generation-session-id';
 let fallbackId: string | null = null;
+let fallbackCounter = 0;
 
 const generateId = (): string => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  if (typeof crypto !== 'undefined') {
+    if (typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+
+    if (typeof crypto.getRandomValues === 'function') {
+      const randomBuffer = new Uint32Array(1);
+      crypto.getRandomValues(randomBuffer);
+      const randomSegment = randomBuffer[0].toString(36).padStart(6, '0').slice(-6);
+      return `${Date.now().toString(36)}-${randomSegment}`;
+    }
   }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  fallbackCounter += 1;
+  const fallbackSegment = fallbackCounter.toString(36).padStart(6, '0').slice(-6);
+  return `${Date.now().toString(36)}-${fallbackSegment}`;
 };
 
 const setSessionCookie = (sessionId: string) => {
