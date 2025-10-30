@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node ./vaultAccess.test.js"
+    "test": "node ./vaultAccess.test.js",
+    "test:cors": "node --test ./corsConfig.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

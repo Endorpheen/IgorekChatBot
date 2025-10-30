@@ -10,6 +10,6 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm install --only=production
-COPY server.js vaultAccess.js ./
+COPY server.js vaultAccess.js corsConfig.js ./
 EXPOSE 3333
 CMD ["node", "server.js"]
