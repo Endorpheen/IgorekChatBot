@@ -46,7 +46,7 @@ export const ensureCsrfToken = (): string => {
   let token: string | null = null;
   try {
     token = window.sessionStorage.getItem(STORAGE_KEY);
-  } catch (error) {
+  } catch {
     token = null;
   }
 
@@ -60,7 +60,7 @@ export const ensureCsrfToken = (): string => {
 
   try {
     window.sessionStorage.setItem(STORAGE_KEY, token);
-  } catch (error) {
+  } catch {
     // ignore storage errors (e.g. private mode)
   }
 

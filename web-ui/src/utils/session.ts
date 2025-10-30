@@ -51,7 +51,7 @@ export const getImageSessionId = (): string => {
     window.sessionStorage.setItem(SESSION_STORAGE_KEY, created);
     setSessionCookie(created);
     return created;
-  } catch (error) {
+  } catch {
     if (!fallbackId) {
       fallbackId = generateId();
     }

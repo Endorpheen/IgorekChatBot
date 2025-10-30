@@ -45,7 +45,7 @@ interface TogetherKeyDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<TogetherKeyDB>> | null = null;
-let memoryRecords: Record<string, StoredKeyRecord> = {};
+const memoryRecords: Record<string, StoredKeyRecord> = {};
 
 const getDb = async (): Promise<IDBPDatabase<TogetherKeyDB>> => {
   if (!hasIndexedDB) {
@@ -255,7 +255,7 @@ export const loadProviderKey = async (providerId: string, pin?: string): Promise
   try {
     const key = await decryptValue(record, pin);
     return { providerId, key, encrypted: true };
-  } catch (error) {
+  } catch {
     throw new InvalidPinError();
   }
 };

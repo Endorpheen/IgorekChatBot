@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { mcpSearch, mcpFetch, callAgent } from '../utils/api';
-import { ApiError } from '../utils/api';
+import { mcpSearch, mcpFetch, callAgent, ApiError } from '../utils/api';
+import type { McpResponse } from '../utils/api';
 import { Copy, Timer, HardDrive } from 'lucide-react';
 import { useChatState } from '../hooks/useChatState';
 import './McpPanel.css';
@@ -10,7 +10,7 @@ const McpPanel: React.FC = () => {
 
   const [query, setQuery] = useState('');
   const [fetchId, setFetchId] = useState('');
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<McpResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [responseTime, setResponseTime] = useState<number | null>(null);
@@ -99,7 +99,7 @@ const McpPanel: React.FC = () => {
     }
   };
 
-  const handleRequest = async (apiCall: () => Promise<any>) => {
+  const handleRequest = async (apiCall: () => Promise<McpResponse>) => {
     setLoading(true);
     setError(null);
     setResult(null);
@@ -156,7 +156,9 @@ const McpPanel: React.FC = () => {
           <div className="status-item">
             <span>Trace:</span>
             <span>{result?.trace_id || 'N/A'}</span>
-            {result?.trace_id && <Copy size={14} className="copy-icon" onClick={() => copyToClipboard(result.trace_id)} />}
+            {result?.trace_id ? (
+              <Copy size={14} className="copy-icon" onClick={() => copyToClipboard(result.trace_id ?? '')} />
+            ) : null}
           </div>
           <div className="status-item">
             <Timer size={14} />

@@ -13,7 +13,7 @@ import {
 interface ChatbotDB extends DBSchema {
   [MESSAGE_STORE_NAME]: {
     key: string;
-    value: any; // Assuming message type from messagesStorage
+    value: unknown;
     indexes: {
       [MESSAGE_BY_THREAD_INDEX]: string;
       [MESSAGE_BY_THREAD_TIME_INDEX]: [string, string];

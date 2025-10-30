@@ -1,4 +1,4 @@
-import type { IDBPDatabase } from 'idb';
+import type { DBSchema, IDBPDatabase, IndexNames, StoreNames } from 'idb';
 
 export const CHATBOT_DB_NAME = 'chatbotDB';
 export const CHATBOT_DB_VERSION = 2;
@@ -17,21 +17,25 @@ const logUpgrade: UpgradeLogFn = (message) => {
   }
 };
 
-export const ensureChatbotSchema = (
-  database: IDBPDatabase<any>,
+export const ensureChatbotSchema = <Schema extends DBSchema>(
+  database: IDBPDatabase<Schema>,
   oldVersion: number,
   newVersion: number | null,
 ): void => {
   const createdStores: string[] = [];
-  if (!database.objectStoreNames.contains(MESSAGE_STORE_NAME)) {
-    const store = database.createObjectStore(MESSAGE_STORE_NAME, { keyPath: 'id' });
-    store.createIndex(MESSAGE_BY_THREAD_INDEX, 'threadId');
-    store.createIndex(MESSAGE_BY_THREAD_TIME_INDEX, ['threadId', 'createdAt']);
+  const messageStoreName = MESSAGE_STORE_NAME as StoreNames<Schema>;
+  const messageIndexName = MESSAGE_BY_THREAD_INDEX as IndexNames<Schema, typeof messageStoreName>;
+  const messageTimeIndexName = MESSAGE_BY_THREAD_TIME_INDEX as IndexNames<Schema, typeof messageStoreName>;
+  if (!database.objectStoreNames.contains(messageStoreName)) {
+    const store = database.createObjectStore(messageStoreName, { keyPath: 'id' });
+    store.createIndex(messageIndexName, 'threadId');
+    store.createIndex(messageTimeIndexName, ['threadId', 'createdAt']);
     createdStores.push(MESSAGE_STORE_NAME);
   }
 
-  if (!database.objectStoreNames.contains(SETTINGS_STORE_NAME)) {
-    database.createObjectStore(SETTINGS_STORE_NAME, { keyPath: 'threadId' });
+  const settingsStoreName = SETTINGS_STORE_NAME as StoreNames<Schema>;
+  if (!database.objectStoreNames.contains(settingsStoreName)) {
+    database.createObjectStore(settingsStoreName, { keyPath: 'threadId' });
     createdStores.push(SETTINGS_STORE_NAME);
   }
 
