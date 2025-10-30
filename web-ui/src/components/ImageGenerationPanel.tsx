@@ -273,11 +273,30 @@ const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({ onRequireKe
   }, [jobStatus]);
 
   const downloadHref = useMemo(() => {
-  if (!downloadUrl) {
+    if (!downloadUrl) {
+      return undefined;
+    }
+
+    const trimmed = downloadUrl.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const resolved = /^https?:/i.test(trimmed) || /^blob:/i.test(trimmed)
+      ? trimmed
+      : buildApiUrl(trimmed);
+
+    try {
+      const url = new URL(resolved);
+      if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') {
+        return url.toString();
+      }
+    } catch (error) {
+      console.warn('Invalid download URL provided for image result', error);
+    }
+
     return undefined;
-  }
-  return downloadUrl.startsWith('http') ? downloadUrl : buildApiUrl(downloadUrl);
-}, [downloadUrl]);
+  }, [downloadUrl]);
 
   const isLoadingModelOptions = modelsLoading || isSearchingModels;
   const noModelsAvailable = !isLoadingModelOptions && displayedModels.length === 0;

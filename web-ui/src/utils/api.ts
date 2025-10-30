@@ -77,7 +77,7 @@ const parseErrorResponse = async (response: Response): Promise<never> => {
         code = data.code;
       }
     }
-  } catch (error) {
+  } catch {
     // ignore parse errors
   }
 
@@ -93,6 +93,19 @@ interface OpenRouterMessage {
 interface AgentApiMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+}
+
+export interface AgentRequestPayload {
+  message: string;
+  thread_id?: string;
+  user_id?: string;
+  history?: ChatMessage[];
+  providerType?: 'openrouter' | 'agentrouter';
+  openRouterApiKey?: string;
+  openRouterModel?: string;
+  agentRouterApiKey?: string;
+  agentRouterModel?: string;
+  agentRouterBaseUrl?: string;
 }
 
 export const callOpenRouter = async (payload: { message: string; thread_id?: string; history?: ChatMessage[]; useTools?: boolean }, settings: { openRouterApiKey?: string; openRouterModel?: string; }, threadSettings: ThreadSettings) => {
@@ -245,7 +258,7 @@ export const callOpenRouter = async (payload: { message: string; thread_id?: str
   };
 };
 
-export const callAgent = async (payload: { message: string; thread_id?: string; user_id?: string; history?: ChatMessage[]; providerType?: 'openrouter' | 'agentrouter'; openRouterApiKey?: string; openRouterModel?: string; agentRouterApiKey?: string; agentRouterModel?: string; agentRouterBaseUrl?: string }) => {
+export const callAgent = async (payload: AgentRequestPayload): Promise<ChatResponse> => {
   const systemPrompt = (typeof window !== 'undefined' ? localStorage.getItem('systemPrompt') : null)?.trim();
 
   const messages: AgentApiMessage[] = [];
@@ -599,7 +612,17 @@ export const analyzeDocument = async ({
   return (await response.json()) as DocumentAnalysisPayload;
 };
 
-export const callMCP = async (method: string, params: Record<string, unknown>) => {
+interface McpRpcContentItem {
+  json?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface McpRpcResult {
+  content?: McpRpcContentItem[];
+  [key: string]: unknown;
+}
+
+export const callMCP = async (method: string, params: Record<string, unknown>): Promise<McpRpcResult> => {
   const mcpUrl = import.meta.env.VITE_MCP_URL;
   if (!mcpUrl) {
     throw new Error('VITE_MCP_URL не настроен');
@@ -630,12 +653,12 @@ export const callMCP = async (method: string, params: Record<string, unknown>) =
     throw new Error(`MCP API error: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data: Record<string, unknown> = await response.json();
   if (data.error) {
-    throw new Error(`MCP RPC error: ${data.error}`);
+    throw new Error(`MCP RPC error: ${String(data.error)}`);
   }
 
-  return data.result;
+  return data.result as McpRpcResult;
 };
 
 export const executeMCPTool = async (toolName: string, args: Record<string, unknown>) => {
@@ -645,11 +668,19 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
         name: 'search',
         arguments: { query: args.query, since: args.since },
       });
-      const contentItems = result.content || [];
+      const contentItems = Array.isArray(result.content) ? result.content : [];
       if (contentItems.length > 0) {
         const first = contentItems[0];
-        if (first.json) {
-          return first.json.results || [];
+        const json = first?.json;
+        if (json && typeof json === 'object') {
+          const record = json as Record<string, unknown>;
+          const results = record.results;
+          if (Array.isArray(results)) {
+            return results;
+          }
+          if (results !== undefined) {
+            return results;
+          }
         }
       }
       return [];
@@ -658,11 +689,19 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
         name: 'fetch',
         arguments: { id: args.id },
       });
-      const contentItems = result.content || [];
+      const contentItems = Array.isArray(result.content) ? result.content : [];
       if (contentItems.length > 0) {
         const first = contentItems[0];
-        if (first.json) {
-          return first.json.content || '';
+        const json = first?.json;
+        if (json && typeof json === 'object') {
+          const record = json as Record<string, unknown>;
+          const content = record.content;
+          if (typeof content === 'string') {
+            return content;
+          }
+          if (content !== undefined) {
+            return content;
+          }
         }
       }
       return '';
@@ -674,7 +713,21 @@ export const executeMCPTool = async (toolName: string, args: Record<string, unkn
   }
 };
 
-export const mcpSearch = async (payload: { query: string; [key: string]: any }): Promise<any> => {
+export interface McpSearchRequest extends Record<string, unknown> {
+  query: string;
+  since?: string;
+}
+
+export interface McpFetchRequest extends Record<string, unknown> {
+  id: string;
+}
+
+export interface McpResponse<T = unknown> extends Record<string, unknown> {
+  data: T;
+  trace_id?: string;
+}
+
+export const mcpSearch = async (payload: McpSearchRequest): Promise<McpResponse> => {
   const response = await fetch(buildApiUrl('/api/mcp/search'), {
     method: 'POST',
     headers: {
@@ -690,10 +743,10 @@ export const mcpSearch = async (payload: { query: string; [key: string]: any }):
     await parseErrorResponse(response);
   }
 
-  return response.json();
+  return response.json() as Promise<McpResponse>;
 };
 
-export const mcpFetch = async (payload: { id: string; [key: string]: any }): Promise<any> => {
+export const mcpFetch = async (payload: McpFetchRequest): Promise<McpResponse> => {
   const response = await fetch(buildApiUrl('/api/mcp/fetch'), {
     method: 'POST',
     headers: {
@@ -709,5 +762,5 @@ export const mcpFetch = async (payload: { id: string; [key: string]: any }): Pro
     await parseErrorResponse(response);
   }
 
-  return response.json();
+  return response.json() as Promise<McpResponse>;
 };

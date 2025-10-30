@@ -447,7 +447,7 @@ const AppContent = () => {
 
     try {
       if (shouldSendText) {
-        const payload: any = {
+        const payload: Parameters<typeof callAgent>[0] = {
           message: trimmed,
           thread_id: threadId,
           user_id: agentUserId,
