@@ -220,10 +220,16 @@ async def analyze_document_endpoint(
         )
     except RuntimeError as exc:
         logger.error("[DOCUMENT ANALYSIS] RuntimeError: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover
-        logger.error("[DOCUMENT ANALYSIS] Ошибка генерации ответа: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="Не удалось сформировать ответ") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Обработка запроса временно недоступна",
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("[DOCUMENT ANALYSIS] Ошибка генерации ответа")
+        raise HTTPException(
+            status_code=500,
+            detail="Не удалось сформировать ответ",
+        )
 
     return {
         'status': 'Document processed',
