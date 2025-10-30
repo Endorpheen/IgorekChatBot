@@ -5,16 +5,13 @@ import path from "path";
 import jwt from "jsonwebtoken";
 import cors from "cors";
 import { createVaultReader, VaultAccessError } from "./vaultAccess.js";
+import { createCorsOptions } from "./corsConfig.js";
 
 const app = express();
 app.use(express.json());
 
 // --- CORS support ---
-const corsOptions = {
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
+const corsOptions = createCorsOptions();
 app.use(cors(corsOptions));
 
 // --- Обработка preflight до авторизации ---
