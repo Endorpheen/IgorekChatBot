@@ -118,3 +118,24 @@ def test_stack_only_in_logs(client: TestClient, monkeypatch: pytest.MonkeyPatch,
 
     for marker in ("Traceback", "app/features", ".py"):
         assert marker not in result["text"]
+
+
+def test_sensitive_response_is_blocked(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _return_sensitive_response(*_args, **_kwargs):
+        return 'Traceback: File "app/features/document_analysis/router.py" failed at OPENAI handler'
+
+    monkeypatch.setattr(document_router_module, "call_ai_query", _return_sensitive_response)
+
+    result = _call_document_analysis(
+        client,
+        headers={
+            "X-CSRF-Token": "test-token",
+            "Origin": "https://igorekchatbot.ru",
+        },
+    )
+
+    assert result["status"] == 500
+    assert result["json"] == {"detail": "Не удалось сформировать ответ"}
+
+    for marker in ("Traceback", "app/features", ".py", "OPENAI"):
+        assert marker not in result["text"]
