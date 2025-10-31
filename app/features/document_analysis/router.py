@@ -241,6 +241,13 @@ async def analyze_document_endpoint(
         )
 
     if isinstance(response_text, str):
+        # If our internal marker for API failure is present, do NOT expose any error details
+        if response_text == "API_ERROR_GENERATING_RESPONSE":
+            logger.warning("[DOCUMENT ANALYSIS] Не удалось сформировать ответ: внутренняя ошибка API получена из call_ai_query")
+            raise HTTPException(
+                status_code=500,
+                detail="Не удалось сформировать ответ",
+            )
         normalised_response = response_text.lower()
         if any(marker in normalised_response for marker in _REDACTED_RESPONSE_MARKERS):
             logger.warning("[DOCUMENT ANALYSIS] Ответ не прошёл постобработку, возвращаем общий код ошибки")
