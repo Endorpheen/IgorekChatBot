@@ -6,9 +6,8 @@ from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from starlette.datastructures import URL
 from pydantic import BaseModel, ConfigDict, Field
-
-from urllib.parse import urlencode
 
 from app.middlewares.security import _require_csrf_token
 from app.settings import get_settings
@@ -174,8 +173,10 @@ async def get_image_job(job_id: str, request: Request, session=Depends(require_s
         {"job_id": job_id, "session": session.session_id},
     )
     path = request.app.url_path_for("signed_image_job_status")
-    redirect_url = f"{path}?{urlencode({'token': token})}"
-    return RedirectResponse(redirect_url, status_code=302)
+    redirect_url = URL(path).replace_query_params(token=token)
+    if redirect_url.scheme or redirect_url.netloc:
+        raise HTTPException(status_code=400, detail="Неверный адрес перенаправления")
+    return RedirectResponse(str(redirect_url), status_code=302)
 
 
 @router.get("/image/jobs/{job_id}/result", include_in_schema=False)
@@ -187,8 +188,10 @@ async def download_image_job_result(job_id: str, request: Request, session=Depen
         {"job_id": job_id, "session": session.session_id},
     )
     path = request.app.url_path_for("signed_image_job_result")
-    redirect_url = f"{path}?{urlencode({'token': token})}"
-    return RedirectResponse(redirect_url, status_code=302)
+    redirect_url = URL(path).replace_query_params(token=token)
+    if redirect_url.scheme or redirect_url.netloc:
+        raise HTTPException(status_code=400, detail="Неверный адрес перенаправления")
+    return RedirectResponse(str(redirect_url), status_code=302)
 
 
 @router.post("/image/validate", include_in_schema=False)
@@ -223,8 +226,10 @@ async def download_image_file(job_id: str, request: Request, session=Depends(req
         {"job_id": job_id, "session": session.session_id},
     )
     path = request.app.url_path_for("signed_image_job_result")
-    redirect_url = f"{path}?{urlencode({'token': token})}"
-    return RedirectResponse(redirect_url, status_code=302)
+    redirect_url = URL(path).replace_query_params(token=token)
+    if redirect_url.scheme or redirect_url.netloc:
+        raise HTTPException(status_code=400, detail="Неверный адрес перенаправления")
+    return RedirectResponse(str(redirect_url), status_code=302)
 
 
 @router.get("/image/providers", response_model=ProviderModelsResponse | ProviderListResponse, include_in_schema=False)
