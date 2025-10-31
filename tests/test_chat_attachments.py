@@ -67,3 +67,45 @@ def test_chat_attachment_rejects_invalid_extension(chat_client: TestClient) -> N
 
     assert response.status_code == 415
     assert response.json()["detail"].startswith("Недопустимое расширение файла")
+
+
+def test_chat_endpoint_returns_generated_attachments(
+    chat_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_call_ai_query(
+        *,
+        prompt=None,
+        history=None,
+        user_api_key=None,
+        user_model=None,
+        messages=None,
+        thread_id=None,
+        provider_type=None,
+        agent_base_url=None,
+    ):
+        assert thread_id is not None
+        storage = attachments_module.get_storage()
+        stored = storage.create_attachment(
+            filename="auto.md",
+            content="# Авто\n\nСодержимое файла.",
+            content_type="text/markdown",
+        )
+        attachments_module.record_thread_attachment(thread_id, stored, "auto-generated")
+        return "Ответ подготовлен."
+
+    monkeypatch.setattr(chat_router_module, "call_ai_query", _fake_call_ai_query)
+
+    headers = {"X-CSRF-Token": "test-token"}
+    response = chat_client.post("/chat", json={"message": "Создай файл"}, headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["attachments"], "Ожидалось вложение в ответе"
+    attachment = payload["attachments"][0]
+    assert attachment["filename"] == "auto.md"
+    assert attachment["description"] == "auto-generated"
+
+    download_response = chat_client.get(attachment["url"])
+    assert download_response.status_code == 200
+    assert download_response.text == "# Авто\n\nСодержимое файла."

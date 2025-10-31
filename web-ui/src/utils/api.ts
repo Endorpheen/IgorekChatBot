@@ -1,4 +1,10 @@
-import type { ChatMessage, ChatResponse, ThreadSettings } from '../types/chat';
+import type {
+  ChatMessage,
+  ChatResponse,
+  RawChatAttachmentItem,
+  RawChatResponse,
+  ThreadSettings,
+} from '../types/chat';
 import type {
   ImageJobCreateResponse,
   ImageJobStatusResponse,
@@ -39,6 +45,17 @@ export const buildApiUrl = (path: string): string => {
     : envBase ?? runtimeOrigin ?? 'http://localhost:8018';
 
   return `${base.replace(/\/$/, '')}${path}`;
+};
+
+const normaliseAttachmentUrl = (url: string): string => {
+  if (!url) {
+    return url;
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  const normalisedPath = url.startsWith('/') ? url : `/${url}`;
+  return buildApiUrl(normalisedPath);
 };
 
 export class ApiError extends Error {
@@ -307,12 +324,27 @@ export const callAgent = async (payload: AgentRequestPayload): Promise<ChatRespo
     throw new Error(`OpenAI Compatible API error: ${response.status} ${errorText}`);
   }
 
-  const data = (await response.json()) as ChatResponse;
-  console.log('[CALL AGENT] Parsed response data:', data);
-  console.log('[CALL AGENT] Response status field:', data.status);
-  console.log('[CALL AGENT] Response response field:', data.response);
+  const rawData = (await response.json()) as RawChatResponse;
+  console.log('[CALL AGENT] Parsed response data:', rawData);
+  console.log('[CALL AGENT] Response status field:', rawData.status);
+  console.log('[CALL AGENT] Response response field:', rawData.response);
 
-  return data;
+  const attachments = Array.isArray(rawData.attachments)
+    ? rawData.attachments.map((item: RawChatAttachmentItem) => ({
+        filename: item.filename,
+        url: normaliseAttachmentUrl(item.url),
+        contentType: item.content_type ?? 'application/octet-stream',
+        size: item.size ?? 0,
+        description: item.description ?? null,
+      }))
+    : undefined;
+
+  return {
+    status: rawData.status,
+    response: rawData.response,
+    thread_id: rawData.thread_id,
+    attachments,
+  };
 };
 
 export const createImageGenerationJob = async (payload: {

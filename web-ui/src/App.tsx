@@ -466,12 +466,31 @@ const AppContent = () => {
         }
         try {
           const response = await callAgent(payload);
+          const targetThreadId = response.thread_id ?? threadId;
           persistMessage({
             type: 'bot',
             contentType: 'text',
             content: response.response ?? '...',
-            threadId: response.thread_id ?? threadId,
+            threadId: targetThreadId,
           });
+          if (response.attachments?.length) {
+            response.attachments.forEach((attachment) => {
+              const label = attachment.description
+                ? attachment.description
+                : attachment.filename;
+              persistMessage({
+                type: 'bot',
+                contentType: 'attachment',
+                content: label,
+                threadId: targetThreadId,
+                fileName: attachment.filename,
+                url: attachment.url,
+                mimeType: attachment.contentType,
+                size: attachment.size,
+                description: attachment.description ?? null,
+              });
+            });
+          }
         } catch (error) {
           persistMessage({
             type: 'bot',

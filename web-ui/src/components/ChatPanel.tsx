@@ -4,6 +4,20 @@ import { Command, Mic, Send, Upload, MoreVertical, Check, X, FileText, Loader2 }
 import CodeBlock from './CodeBlock';
 import type { ChatMessage } from '../types/chat';
 
+const formatBytes = (value?: number | null): string | null => {
+  if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+    return null;
+  }
+  if (value === 0) {
+    return '0 B';
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const size = value / 1024 ** exponent;
+  const formatted = size >= 10 || exponent === 0 ? size.toFixed(0) : size.toFixed(1);
+  return `${formatted} ${units[exponent]}`;
+};
+
 interface ChatPanelProps {
   messages: ChatMessage[];
   isTyping: boolean;
@@ -98,71 +112,105 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   return (
     <main className="chat-panel">
       <div className="chat-window">
-        {messages.map((msg) => (
-          <div key={msg.id} className={`chat-message chat-message--${msg.type}`}>
-            <span className="chat-prefix">{msg.type === 'user' ? '>' : '$'}</span>
-          {msg.contentType === 'text' ? (
-            <div className="chat-content">
-              <ReactMarkdown components={markdownComponents}>
-                {msg.content}
-              </ReactMarkdown>
-            </div>
-          ) : msg.contentType === 'image' ? (
-            <img
-              src={msg.url ?? msg.content}
-              alt={msg.fileName ?? 'Uploaded image'}
-              className="chat-image"
-            />
-          ) : (
-            <div className="chat-document-message">
-              <FileText className="icon" />
-              <div className="chat-document-text" title={msg.content}>
-                {msg.content}
-              </div>
-            </div>
-          )}
-            <div className="message-actions">
-              <button
-                className="menu-button"
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMessageMenu(openMessageMenu === msg.id ? null : msg.id);
-                }}
-                title="Действия с сообщением"
-              >
-                <MoreVertical className="icon" />
-              </button>
-              {openMessageMenu === msg.id && (
-                <div className="message-menu" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      copyToClipboard(msg.content, msg.id);
-                      setOpenMessageMenu(null);
-                    }}
-                  >
-                    Скопировать сообщение
-                    {copiedMessageId === msg.id && <Check className="menu-item-icon" />}
-                  </button>
-                  {msg.type === 'bot' && msg.contentType === 'text' && (
+        {messages.map((msg) => {
+          const attachmentMetaParts: string[] = [];
+          if (msg.mimeType) {
+            attachmentMetaParts.push(msg.mimeType);
+          }
+          const attachmentSize = formatBytes(msg.size);
+          if (attachmentSize) {
+            attachmentMetaParts.push(attachmentSize);
+          }
+
+          return (
+            <div key={msg.id} className={`chat-message chat-message--${msg.type}`}>
+              <span className="chat-prefix">{msg.type === 'user' ? '>' : '$'}</span>
+              {msg.contentType === 'text' ? (
+                <div className="chat-content">
+                  <ReactMarkdown components={markdownComponents}>
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
+              ) : msg.contentType === 'image' ? (
+                <img
+                  src={msg.url ?? msg.content}
+                  alt={msg.fileName ?? 'Uploaded image'}
+                  className="chat-image"
+                />
+              ) : msg.contentType === 'attachment' ? (
+                <div className="chat-attachment-message">
+                  <FileText className="icon" />
+                  <div className="chat-attachment-details">
+                    <div className="chat-attachment-name">{msg.fileName ?? msg.content}</div>
+                    {attachmentMetaParts.length > 0 ? (
+                      <div className="chat-attachment-meta">{attachmentMetaParts.join(' • ')}</div>
+                    ) : null}
+                    {msg.description ? (
+                      <div className="chat-attachment-description">{msg.description}</div>
+                    ) : null}
+                    {msg.url ? (
+                      <a
+                        className="chat-attachment-link"
+                        href={msg.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Скачать
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div className="chat-document-message">
+                  <FileText className="icon" />
+                  <div className="chat-document-text" title={msg.content}>
+                    {msg.content}
+                  </div>
+                </div>
+              )}
+              <div className="message-actions">
+                <button
+                  className="menu-button"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMessageMenu(openMessageMenu === msg.id ? null : msg.id);
+                  }}
+                  title="Действия с сообщением"
+                >
+                  <MoreVertical className="icon" />
+                </button>
+                {openMessageMenu === msg.id && (
+                  <div className="message-menu" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
                       className="menu-item"
                       onClick={() => {
-                        speak(msg.content);
+                        copyToClipboard(msg.content, msg.id);
                         setOpenMessageMenu(null);
                       }}
                     >
-                      Озвучить сообщение
+                      Скопировать сообщение
+                      {copiedMessageId === msg.id && <Check className="menu-item-icon" />}
                     </button>
-                  )}
-                </div>
-              )}
+                    {msg.type === 'bot' && msg.contentType === 'text' && (
+                      <button
+                        type="button"
+                        className="menu-item"
+                        onClick={() => {
+                          speak(msg.content);
+                          setOpenMessageMenu(null);
+                        }}
+                      >
+                        Озвучить сообщение
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {isTyping && (
           <div className="typing-indicator">
             <span className="dot" />

@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.features.chat.attachments import StoredAttachment, get_storage
+from app.features.chat.attachments import (
+    StoredAttachment,
+    consume_thread_attachments,
+    get_storage,
+)
 from app.features.chat.service import THREAD_MODEL_OVERRIDES, call_ai_query
 from app.logging import get_logger
 from app.middlewares.security import _require_csrf_token
@@ -151,7 +155,36 @@ async def chat_endpoint(
         logger.error("[CHAT ENDPOINT] RuntimeError: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return ChatResponse(status="Message processed", response=response_text, thread_id=current_thread_id)
+    generated_attachments = consume_thread_attachments(current_thread_id)
+    attachment_items: list[ChatAttachment] = []
+    if generated_attachments:
+        path = request.app.url_path_for("signed_chat_attachment")
+        for item in generated_attachments:
+            token = signed_links.issue(
+                "chat-attachment",
+                {
+                    "file": item.storage_name,
+                    "filename": item.filename,
+                    "content_type": item.content_type,
+                },
+            )
+            url = f"{path}?token={token}"
+            attachment_items.append(
+                ChatAttachment(
+                    filename=item.filename,
+                    url=url,
+                    content_type=item.content_type,
+                    size=item.size,
+                    description=item.description,
+                )
+            )
+
+    return ChatResponse(
+        status="Message processed",
+        response=response_text,
+        thread_id=current_thread_id,
+        attachments=attachment_items or None,
+    )
 
 
 @router.post("/chat/attachments", response_model=ChatAttachmentResponse, include_in_schema=False)

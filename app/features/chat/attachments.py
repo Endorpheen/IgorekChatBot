@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import HTTPException, status
+
+from langchain.tools import tool
 
 from app.settings import ensure_upload_directory, get_settings
 
@@ -28,6 +31,15 @@ class StoredAttachment:
     download_name: str
     content_type: str
     size: int
+
+
+@dataclass(slots=True)
+class GeneratedAttachment:
+    storage_name: str
+    filename: str
+    content_type: str
+    size: int
+    description: str | None = None
 
 
 class ChatAttachmentStorage:
@@ -90,6 +102,7 @@ class ChatAttachmentStorage:
 
 
 _storage: Optional[ChatAttachmentStorage] = None
+_thread_attachments: dict[str, list[GeneratedAttachment]] = {}
 
 
 def get_storage() -> ChatAttachmentStorage:
@@ -103,3 +116,60 @@ def reset_storage_for_tests(new_dir: Path) -> None:
     ensure_upload_directory(new_dir)
     storage = get_storage()
     storage.override_directory(new_dir)
+    _thread_attachments.clear()
+
+
+def record_thread_attachment(thread_id: str, stored: StoredAttachment, description: Optional[str]) -> GeneratedAttachment:
+    attachment = GeneratedAttachment(
+        storage_name=stored.storage_name,
+        filename=stored.download_name,
+        content_type=stored.content_type,
+        size=stored.size,
+        description=description,
+    )
+    _thread_attachments.setdefault(thread_id, []).append(attachment)
+    return attachment
+
+
+def consume_thread_attachments(thread_id: Optional[str]) -> list[GeneratedAttachment]:
+    if not thread_id:
+        return []
+    return _thread_attachments.pop(thread_id, [])
+
+
+def clear_thread_attachments(thread_id: Optional[str]) -> None:
+    if not thread_id:
+        return
+    _thread_attachments.pop(thread_id, None)
+
+
+@tool("create_chat_attachment")
+def create_chat_attachment_tool(
+    filename: str,
+    content: str,
+    description: str | None = None,
+    content_type: str | None = None,
+    thread_id: str | None = None,
+) -> str:
+    """Создаёт вложение из переданного текста и возвращает краткое описание."""
+    if not thread_id:
+        return "Ошибка: не удалось сохранить вложение — отсутствует идентификатор треда."
+
+    storage = get_storage()
+    try:
+        stored = storage.create_attachment(
+            filename=filename,
+            content=content,
+            content_type=content_type,
+        )
+    except HTTPException as exc:
+        return f"Ошибка создания вложения: {exc.detail}"
+
+    record_thread_attachment(thread_id, stored, description)
+    metadata = {
+        "filename": stored.download_name,
+        "size": stored.size,
+        "content_type": stored.content_type,
+        "description": description,
+    }
+    return f"Вложение создано: {json.dumps(metadata, ensure_ascii=False)}"
