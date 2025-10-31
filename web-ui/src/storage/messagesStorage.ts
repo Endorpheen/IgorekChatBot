@@ -28,6 +28,8 @@ interface StoredMessage {
   fileName?: string;
   url?: string;
   mimeType?: string;
+  size?: number;
+  description?: string | null;
 }
 
 interface ChatbotDB extends DBSchema {
@@ -69,6 +71,8 @@ const toStored = (message: ChatMessage): StoredMessage => ({
   fileName: message.fileName,
   url: message.url,
   mimeType: message.mimeType,
+  size: message.size,
+  description: message.description ?? null,
 });
 
 const fromStored = (stored: StoredMessage): ChatMessage => ({
@@ -81,6 +85,8 @@ const fromStored = (stored: StoredMessage): ChatMessage => ({
   fileName: stored.fileName,
   url: stored.url,
   mimeType: stored.mimeType,
+  size: stored.size,
+  description: stored.description ?? null,
 });
 
 const sortByCreatedAt = <T extends { createdAt: string }>(items: T[]): T[] =>
@@ -165,13 +171,18 @@ const normaliseLegacyMessage = (entry: unknown): ChatMessage | null => {
     : new Date().toISOString();
 
   const contentTypeValue = obj.contentType;
-  const contentType: MessageContentType = contentTypeValue === 'image' ? 'image' : 'text';
+  const allowedContentTypes: MessageContentType[] = ['text', 'image', 'document', 'attachment'];
+  const contentType: MessageContentType = allowedContentTypes.includes(contentTypeValue as MessageContentType)
+    ? (contentTypeValue as MessageContentType)
+    : 'text';
   const idValue = obj.id;
   const id = typeof idValue === 'string' ? idValue : buildId();
 
   const fileName = typeof obj.fileName === 'string' ? obj.fileName : undefined;
   const url = typeof obj.url === 'string' ? obj.url : undefined;
   const mimeType = typeof obj.mimeType === 'string' ? obj.mimeType : undefined;
+  const size = typeof obj.size === 'number' ? obj.size : undefined;
+  const description = typeof obj.description === 'string' ? obj.description : null;
 
   return {
     id,
@@ -183,6 +194,8 @@ const normaliseLegacyMessage = (entry: unknown): ChatMessage | null => {
     fileName,
     url,
     mimeType,
+    size,
+    description,
   };
 };
 

@@ -5,6 +5,7 @@ from typing import Dict, List
 from langchain_core.messages import ToolMessage
 from langchain_openai import ChatOpenAI
 
+from app.features.chat.attachments import clear_thread_attachments, create_chat_attachment_tool
 from app.features.infra.browser_tool import browse_website
 from app.features.infra.sandbox_tool import run_code_in_sandbox
 from app.features.search.google_tool import get_google_search_tool
@@ -22,7 +23,14 @@ if not settings.openrouter_api_key:
 
 
 def _bind_tools(llm: ChatOpenAI):
-    return llm.bind_tools([run_code_in_sandbox, browse_website, google_search])
+    return llm.bind_tools(
+        [
+            run_code_in_sandbox,
+            browse_website,
+            google_search,
+            create_chat_attachment_tool,
+        ]
+    )
 
 
 def call_ai_query(
@@ -46,6 +54,9 @@ def call_ai_query(
     logger.debug("[AI QUERY] actual_api_key=%s", "***masked***" if actual_api_key else None)
     logger.debug("[AI QUERY] provider_type=%s", provider)
     logger.debug("[AI QUERY] agent_base_url=%s", agent_base_url)
+
+    if thread_id:
+        clear_thread_attachments(thread_id)
 
     if provider == "agentrouter":
         if not actual_api_key:
@@ -138,6 +149,11 @@ def call_ai_query(
                     else:
                         prepared_args = {"query": prepared_args, "thread_id": thread_id}
                     result = google_search.run(prepared_args)
+                elif tool_name == "create_chat_attachment":
+                    prepared_args = tool_args if isinstance(tool_args, dict) else {"content": tool_args}
+                    if thread_id:
+                        prepared_args.setdefault("thread_id", thread_id)
+                    result = create_chat_attachment_tool.run(prepared_args)
                 else:
                     logger.warning("[TOOL RECURSION] step=%s неизвестный инструмент: %s", step, tool_name)
                     result = f"Unsupported tool: {tool_name}"
@@ -153,9 +169,13 @@ def call_ai_query(
             logger.debug("[AI QUERY] Сообщения после tool_calls шага %s: %s", step, conversation)
 
         logger.error("[TOOL RECURSION] Превышен лимит последовательных вызовов инструментов")
+        if thread_id:
+            clear_thread_attachments(thread_id)
         return "Превышен лимит последовательных вызовов инструментов."
 
     except Exception as exc:  # pragma: no cover
         logger.error("[AI QUERY] Ошибка LangChain API: %s", exc, exc_info=True)
         # Return a fixed marker string that the router can catch, do not include details
+        if thread_id:
+            clear_thread_attachments(thread_id)
         return "API_ERROR_GENERATING_RESPONSE"

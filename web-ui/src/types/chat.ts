@@ -1,5 +1,5 @@
 export type MessageAuthor = 'user' | 'bot';
-export type MessageContentType = 'text' | 'image' | 'document';
+export type MessageContentType = 'text' | 'image' | 'document' | 'attachment';
 
 export interface ChatMessage {
   id: string;
@@ -11,6 +11,8 @@ export interface ChatMessage {
   fileName?: string;
   url?: string;
   mimeType?: string;
+  size?: number;
+  description?: string | null;
 }
 
 export interface ThreadNameMap {
@@ -36,8 +38,32 @@ export interface ThreadSettingsMap {
   [threadId: string]: ThreadSettings;
 }
 
+export interface ChatAttachmentItem {
+  filename: string;
+  url: string;
+  contentType: string;
+  size: number;
+  description?: string | null;
+}
+
+export interface RawChatAttachmentItem {
+  filename: string;
+  url: string;
+  content_type: string;
+  size: number;
+  description?: string | null;
+}
+
+export interface RawChatResponse {
+  status: string;
+  response: string;
+  thread_id?: string;
+  attachments?: RawChatAttachmentItem[];
+}
+
 export interface ChatResponse {
   status: string;
   response: string;
   thread_id?: string;
+  attachments?: ChatAttachmentItem[];
 }

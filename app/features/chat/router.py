@@ -3,19 +3,27 @@ from __future__ import annotations
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.features.chat.attachments import (
+    StoredAttachment,
+    consume_thread_attachments,
+    get_storage,
+)
 from app.features.chat.service import THREAD_MODEL_OVERRIDES, call_ai_query
 from app.logging import get_logger
 from app.middlewares.security import _require_csrf_token
 from app.security_layer.dependencies import require_session
 from app.security_layer.rate_limiter import RateLimitConfig, get_rate_limiter
+from app.security_layer.signed_links import get_signed_link_manager
 from app.settings import get_settings
 
 router = APIRouter()
 logger = get_logger()
 settings = get_settings()
+signed_links = get_signed_link_manager()
 
 
 class ChatMessagePayload(BaseModel):
@@ -49,6 +57,27 @@ class ChatResponse(BaseModel):
     status: str
     response: str
     thread_id: str | None = None
+    attachments: list["ChatAttachment"] | None = None
+
+
+class ChatAttachment(BaseModel):
+    filename: str
+    url: str
+    content_type: str
+    size: int
+    description: str | None = None
+
+
+class ChatAttachmentCreateRequest(BaseModel):
+    filename: str
+    content: str
+    content_type: str | None = None
+    description: str | None = None
+
+
+class ChatAttachmentResponse(BaseModel):
+    status: Literal["created"]
+    attachment: ChatAttachment
 
 
 @router.post("/chat", response_model=ChatResponse, include_in_schema=False)
@@ -126,4 +155,108 @@ async def chat_endpoint(
         logger.error("[CHAT ENDPOINT] RuntimeError: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return ChatResponse(status="Message processed", response=response_text, thread_id=current_thread_id)
+    generated_attachments = consume_thread_attachments(current_thread_id)
+    attachment_items: list[ChatAttachment] = []
+    if generated_attachments:
+        path = request.app.url_path_for("signed_chat_attachment")
+        for item in generated_attachments:
+            token = signed_links.issue(
+                "chat-attachment",
+                {
+                    "file": item.storage_name,
+                    "filename": item.filename,
+                    "content_type": item.content_type,
+                },
+            )
+            url = f"{path}?token={token}"
+            attachment_items.append(
+                ChatAttachment(
+                    filename=item.filename,
+                    url=url,
+                    content_type=item.content_type,
+                    size=item.size,
+                    description=item.description,
+                )
+            )
+
+    return ChatResponse(
+        status="Message processed",
+        response=response_text,
+        thread_id=current_thread_id,
+        attachments=attachment_items or None,
+    )
+
+
+@router.post("/chat/attachments", response_model=ChatAttachmentResponse, include_in_schema=False)
+async def create_chat_attachment(
+    payload: ChatAttachmentCreateRequest,
+    request: Request,
+    session=Depends(require_session),
+) -> ChatAttachmentResponse:
+    _require_csrf_token(request)
+    limiter = get_rate_limiter()
+    limiter.hit(
+        "chat_attachment:session",
+        session.session_id,
+        RateLimitConfig(limit=settings.rate_limit_chat_per_minute, window_seconds=60),
+    )
+
+    storage = get_storage()
+    stored: StoredAttachment = storage.create_attachment(
+        filename=payload.filename,
+        content=payload.content,
+        content_type=payload.content_type,
+    )
+
+    token = signed_links.issue(
+        "chat-attachment",
+        {
+            "file": stored.storage_name,
+            "filename": stored.download_name,
+            "content_type": stored.content_type,
+        },
+    )
+    path = request.app.url_path_for("signed_chat_attachment")
+    attachment_url = f"{path}?token={token}"
+
+    attachment = ChatAttachment(
+        filename=stored.download_name,
+        url=attachment_url,
+        content_type=stored.content_type,
+        size=stored.size,
+        description=payload.description,
+    )
+
+    return ChatAttachmentResponse(status="created", attachment=attachment)
+
+
+@router.get("/signed/chat/attachments", name="signed_chat_attachment", include_in_schema=False)
+async def serve_signed_chat_attachment(token: str = Query(...)) -> FileResponse:
+    payload = signed_links.verify(token)
+    if payload.resource != "chat-attachment":
+        raise HTTPException(status_code=403, detail="Некорректный тип ресурса")
+
+    data = payload.data
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Недопустимый токен вложения")
+
+    storage_name = data.get("file")
+    download_name = data.get("filename")
+    content_type = data.get("content_type") or "application/octet-stream"
+
+    if not isinstance(storage_name, str) or not storage_name:
+        raise HTTPException(status_code=400, detail="Недопустимый токен вложения")
+
+    if not isinstance(download_name, str) or not download_name:
+        download_name = storage_name
+
+    storage = get_storage()
+    file_path = storage.resolve_attachment(storage_name)
+
+    response = FileResponse(str(file_path), media_type=content_type, filename=download_name)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
+ChatResponse.model_rebuild()
