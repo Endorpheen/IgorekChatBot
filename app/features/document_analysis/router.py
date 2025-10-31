@@ -22,6 +22,15 @@ MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
 DOCUMENT_TEXT_LIMIT = 120_000
 SANDBOX_TIMEOUT = 30
 
+_REDACTED_RESPONSE_MARKERS = (
+    "traceback",
+    'file "',
+    ".py",
+    "openai",
+    "aws_secret",
+    "google",
+)
+
 ALLOWED_EXTENSIONS = {'.pdf', '.md', '.txt', '.docx'}
 ALLOWED_MIME_TYPES: Dict[str, set[str]] = {
     '.pdf': {'application/pdf', 'application/x-pdf'},
@@ -230,6 +239,15 @@ async def analyze_document_endpoint(
             status_code=500,
             detail="Не удалось сформировать ответ",
         )
+
+    if isinstance(response_text, str):
+        normalised_response = response_text.lower()
+        if any(marker in normalised_response for marker in _REDACTED_RESPONSE_MARKERS):
+            logger.warning("[DOCUMENT ANALYSIS] Ответ не прошёл постобработку, возвращаем общий код ошибки")
+            raise HTTPException(
+                status_code=500,
+                detail="Не удалось сформировать ответ",
+            )
 
     return {
         'status': 'Document processed',
