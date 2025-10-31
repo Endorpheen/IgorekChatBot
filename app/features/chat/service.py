@@ -157,4 +157,5 @@ def call_ai_query(
 
     except Exception as exc:  # pragma: no cover
         logger.error("[AI QUERY] Ошибка LangChain API: %s", exc, exc_info=True)
-        return f"Ошибка API: {exc}"
+        # Return a fixed marker string that the router can catch, do not include details
+        return "API_ERROR_GENERATING_RESPONSE"
