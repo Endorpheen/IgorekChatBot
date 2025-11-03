@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const frontendCoverageDir = resolve(currentDir, '../reports/frontend/coverage')
