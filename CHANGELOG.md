@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.1.0] — 2025-11-03
+### Добавлено / Added
+- 🇷🇺 Чат поддерживает вложения: LangChain-инструмент сохраняет файлы в `uploads/chat`, сервер выдаёт подписанные ссылки, а WebUI показывает и кэширует вложения.
+- 🇬🇧 Chat now supports attachments: the LangChain tool persists files under `uploads/chat`, the server issues signed download links, and the WebUI surfaces and caches them.
+
+### Изменено / Changed
+- 🇷🇺 Настройки OpenAI Compatible позволяют вручную ввести модель, если `/models` вернул 400/404, и подсказывают пользователю о ручном вводе.
+- 🇬🇧 The OpenAI Compatible settings fall back to manual model entry whenever `/models` responds with 400/404 and inform the user about the manual mode.
+
+### Исправлено / Fixed
+- 🇷🇺 Маршруты генерации изображений больше не редиректят на внешние адреса; добавлены регрессионные тесты на относительные ссылки.
+- 🇬🇧 Image generation redirects are now forced to stay relative; regression tests cover the safety checks.
+- 🇷🇺 Обработка анализа документов возвращает обезличенные ошибки: скрыты стэктрейсы, перехватываются маркеры внутренних сбоев и блокируются ответы с секретами; покрыто тестами.
+- 🇬🇧 Document analysis now responds with sanitized errors: stack traces stay server-side, internal failure markers trigger generic responses, and secret-like outputs are rejected with tests.
+
+### Безопасность / Security
+- 🇷🇺 Фронтенд использует криптографические источники (`crypto.randomUUID`/`crypto.getRandomValues`) для сессионных идентификаторов и покрыт unit-тестом.
+- 🇬🇧 The frontend now relies on cryptographic sources (`crypto.randomUUID`/`crypto.getRandomValues`) for session identifiers and ships with unit tests.
+- 🇷🇺 Отпечаток ключей генерации изображений вычисляется через PBKDF2 с фиксированной солью и 600k итераций; добавлены тесты на детерминизм.
+- 🇬🇧 Image-generation key fingerprints now use PBKDF2 with a fixed salt and 600k iterations, backed by determinism tests.
+- 🇷🇺 WebUI ужесточил обработку ссылок на скачивание и MCP-вызовы: фильтруются небезопасные URL, типы строго типизированы, сборка проходит линт и build.
+- 🇬🇧 The WebUI hardened download links and MCP calls by filtering unsafe URLs, tightening types, and keeping lint/build clean.
+- 🇷🇺 MCP Obsidian предотвращает traversal, нормализует пути и проверяет расширения; CORS вынесен в модуль с тестами, Docker-образ обновлён.
+- 🇬🇧 The Obsidian MCP server blocks path traversal, normalizes vault paths, restricts extensions, and ships a tested CORS helper with the Docker image updated.
+- 🇷🇺 GitHub Actions CI запускается с read-only `GITHUB_TOKEN`, следуя принципу наименьших привилегий.
+- 🇬🇧 GitHub Actions CI now runs with a read-only `GITHUB_TOKEN`, adhering to least-privilege guidance.
+
+### Обслуживание / Maintenance
+- 🇷🇺 Добавлен служебный файл, чтобы инициировать свежий CodeQL-скан и проверить результаты безопасности.
+- 🇬🇧 Added a helper file to trigger a fresh CodeQL scan and validate security findings.
+
 # Changelog
 
 ## [2.0.2] — 2025-10-26
