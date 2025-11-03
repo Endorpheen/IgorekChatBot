@@ -30,6 +30,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [agentAvailableModels, setAgentAvailableModels] = useState<string[]>([]);
   const [isLoadingAgentModels, setIsLoadingAgentModels] = useState(false);
+  const [agentModelsFallback, setAgentModelsFallback] = useState(false);
 
   useEffect(() => {
     const savedSystemPrompt = localStorage.getItem('systemPrompt');
@@ -95,10 +96,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
     if (!baseUrl || !apiKey) {
       setAgentAvailableModels([]);
+      setAgentModelsFallback(false);
       return;
     }
 
     setIsLoadingAgentModels(true);
+    setAgentModelsFallback(false);
     try {
       const url = new URL(buildApiUrl('/api/providers/agentrouter/models'));
       url.searchParams.set('base_url', baseUrl);
@@ -109,6 +112,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         },
       });
 
+      if (response.status === 400 || response.status === 404) {
+        setAgentAvailableModels([]);
+        setAgentModelsFallback(true);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to load OpenAI Compatible models: ${response.status}`);
       }
@@ -116,6 +125,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       const data = await response.json();
       const models: string[] = Array.isArray(data.models) ? data.models : [];
       setAgentAvailableModels(models);
+      setAgentModelsFallback(false);
 
       if (models.length > 0 && !models.includes(currentSettings.agentRouterModel || '')) {
         updateCurrentThreadSettings({ agentRouterModel: models[0] });
@@ -123,6 +133,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     } catch (error) {
       console.error('Failed to load OpenAI Compatible models:', error);
       setAgentAvailableModels([]);
+      setAgentModelsFallback(false);
     } finally {
       setIsLoadingAgentModels(false);
     }
@@ -313,25 +324,41 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
               <div className="setting-field">
                 <label className="setting-label" htmlFor="agentRouterModel">Модель</label>
-                <select
-                  id="agentRouterModel"
-                  value={currentSettings.agentRouterModel ?? ''}
-                  onChange={(e) => updateCurrentThreadSettings({ agentRouterModel: e.target.value })}
-                  className="settings-select"
-                  disabled={isLoadingAgentModels || !(currentSettings.agentRouterBaseUrl && currentSettings.agentRouterApiKey)}
-                >
-                  {isLoadingAgentModels ? (
-                    <option>Загрузка моделей...</option>
-                  ) : agentAvailableModels.length > 0 ? (
-                    agentAvailableModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))
-                  ) : (
-                    <option disabled>Укажите Base URL и API Key для загрузки моделей</option>
-                  )}
-                </select>
+                {agentModelsFallback ? (
+                  <input
+                    id="agentRouterModel"
+                    type="text"
+                    value={currentSettings.agentRouterModel ?? ''}
+                    onChange={(e) => updateCurrentThreadSettings({ agentRouterModel: e.target.value })}
+                    placeholder="gpt-4o-mini"
+                    className="settings-input"
+                  />
+                ) : (
+                  <select
+                    id="agentRouterModel"
+                    value={currentSettings.agentRouterModel ?? ''}
+                    onChange={(e) => updateCurrentThreadSettings({ agentRouterModel: e.target.value })}
+                    className="settings-select"
+                    disabled={isLoadingAgentModels || !(currentSettings.agentRouterBaseUrl && currentSettings.agentRouterApiKey)}
+                  >
+                    {isLoadingAgentModels ? (
+                      <option>Загрузка моделей...</option>
+                    ) : agentAvailableModels.length > 0 ? (
+                      agentAvailableModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))
+                    ) : (
+                      <option disabled>Укажите Base URL и API Key для загрузки моделей</option>
+                    )}
+                  </select>
+                )}
+                {agentModelsFallback && (
+                  <p className="setting-description">
+                    Сервис вернул ошибку 400/404. Введите идентификатор модели вручную.
+                  </p>
+                )}
               </div>
             </div>
           </div>
