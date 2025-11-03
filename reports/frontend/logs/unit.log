@@ -1,0 +1,56 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.6 [39m[90m/root/igorekchatbot/web-ui[39m
+      [2mCoverage enabled with [22m[33mv8[39m
+
+ [32m✓[39m tests/unit/session.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 03:20:19
+[2m   Duration [22m 1.42s[2m (transform 68ms, setup 0ms, collect 73ms, tests 26ms, environment 0ms, prepare 25ms)[22m
+
+[34m % [39m[2mCoverage report from [22m[33mv8[39m
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |     1.3 |     0.65 |    0.66 |    1.37 |                   
+ src               |       0 |        0 |       0 |       0 |                   
+  App.tsx          |       0 |        0 |       0 |       0 | 38-791            
+  main.tsx         |       0 |      100 |     100 |       0 | 6                 
+  vite-env.d.ts    |       0 |        0 |       0 |       0 |                   
+ src/components    |       0 |        0 |       0 |       0 |                   
+  ChatPanel.tsx    |       0 |        0 |       0 |       0 | 7-329             
+  CodeBlock.tsx    |       0 |        0 |       0 |       0 | 13-42             
+  CopyButton.tsx   |       0 |        0 |       0 |       0 | 8-36              
+  ...vaiWidget.tsx |       0 |        0 |       0 |       0 | 3-99              
+  Footer.tsx       |       0 |        0 |       0 |       0 | 11-65             
+  Header.tsx       |       0 |        0 |       0 |       0 | 17-103            
+  ...tionPanel.tsx |       0 |        0 |       0 |       0 | 39-1056           
+  ...nSettings.tsx |       0 |        0 |       0 |       0 | 38-441            
+  McpPanel.tsx     |       0 |        0 |       0 |       0 | 8-217             
+  ...ingsPanel.tsx |       0 |        0 |       0 |       0 | 17-436            
+  ThreadsPanel.tsx |       0 |        0 |       0 |       0 | 28-159            
+ src/constants     |       0 |      100 |     100 |       0 |                   
+  chat.ts          |       0 |      100 |     100 |       0 | 1-3               
+ src/hooks         |       0 |        0 |       0 |       0 |                   
+  ...udioPlayer.ts |       0 |        0 |       0 |       0 | 7-106             
+  useChatState.ts  |       0 |        0 |       0 |       0 | 13-153            
+  ...mageUpload.ts |       0 |        0 |       0 |       0 | 7-27              
+  ...ecognition.ts |       0 |        0 |       0 |       0 | 8-176             
+ src/storage       |       0 |        0 |       0 |       0 |                   
+  ...otDbConfig.ts |       0 |        0 |       0 |       0 | 3-45              
+  ...gesStorage.ts |       0 |        0 |       0 |       0 | 13-353            
+  ...logStorage.ts |       0 |        0 |       0 |       0 | 4-91              
+  ...references.ts |       0 |        0 |       0 |       0 | 1-57              
+  ...ngsStorage.ts |       0 |        0 |       0 |       0 | 28-64             
+  ...KeyStorage.ts |       0 |        0 |       0 |       0 | 3-328             
+ src/types         |       0 |        0 |       0 |       0 |                   
+  chat.ts          |       0 |        0 |       0 |       0 |                   
+  global.d.ts      |       0 |        0 |       0 |       0 |                   
+  image.ts         |       0 |        0 |       0 |       0 |                   
+  settings.ts      |       0 |        0 |       0 |       0 |                   
+ src/utils         |    8.62 |     4.29 |   10.34 |    8.76 |                   
+  api.ts           |       0 |        0 |       0 |       0 | 17-797            
+  csrf.ts          |       0 |        0 |       0 |       0 | 1-74              
+  session.ts       |   78.04 |       55 |     100 |   78.04 | ...33,47-48,55-59 
+-------------------|---------|----------|---------|---------|-------------------

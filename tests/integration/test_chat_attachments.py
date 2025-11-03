@@ -6,10 +6,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.features.chat import attachments as attachments_module
-from app.features.chat import router as chat_router_module
-from app.security_layer.dependencies import require_session
-from app.security_layer.session_manager import SessionInfo
+from tests.integration._tool_stub import stub_langchain_tool
+
+with stub_langchain_tool():
+    from app.features.chat import attachments as attachments_module
+    from app.features.chat import router as chat_router_module
+    from app.security_layer.dependencies import require_session
+    from app.security_layer.session_manager import SessionInfo
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture()

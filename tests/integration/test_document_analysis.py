@@ -8,10 +8,15 @@ from fastapi.testclient import TestClient
 
 import importlib
 
-document_router_module = importlib.import_module("app.features.document_analysis.router")
-document_router = document_router_module.router
-from app.security_layer.dependencies import require_session
-from app.security_layer.session_manager import SessionInfo
+from tests.integration._tool_stub import stub_langchain_tool
+
+with stub_langchain_tool():
+    document_router_module = importlib.import_module("app.features.document_analysis.router")
+    document_router = document_router_module.router
+    from app.security_layer.dependencies import require_session
+    from app.security_layer.session_manager import SessionInfo
+
+pytestmark = pytest.mark.integration
 
 
 class _FakeSandboxResponse:

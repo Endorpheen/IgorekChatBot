@@ -7,11 +7,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.security_layer.dependencies import require_session
-from app.security_layer.session_manager import SessionInfo
+from tests.integration._tool_stub import stub_langchain_tool
 
-image_router_module = importlib.import_module("app.features.image_generation.router")
-image_router = image_router_module.router
+pytestmark = pytest.mark.integration
+
+with stub_langchain_tool():
+    from app.security_layer.dependencies import require_session
+    from app.security_layer.session_manager import SessionInfo
+
+    image_router_module = importlib.import_module("app.features.image_generation.router")
+    image_router = image_router_module.router
 
 
 class _DummyLimiter:
