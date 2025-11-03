@@ -1,0 +1,82 @@
+
+> test:backend
+> uv run --with pytest-cov pytest --cov=app --cov-report=xml:reports/backend/coverage.xml --cov-report=term
+
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-8.4.2, pluggy-1.6.0
+rootdir: /root/igorekchatbot
+configfile: pytest.ini
+testpaths: tests/unit, tests/integration
+plugins: cov-7.0.0, langsmith-0.4.38, anyio-4.10.0
+collected 15 items
+
+tests/unit/test_image_generation_fingerprint.py ...                      [ 20%]
+tests/integration/test_chat_attachments.py ...                           [ 40%]
+tests/integration/test_document_analysis.py ...                          [ 60%]
+tests/integration/test_image_generation_redirects.py ......              [100%]
+
+=============================== warnings summary ===============================
+<frozen abc>:106
+  <frozen abc>:106: LangGraphDeprecatedSinceV10: AgentStatePydantic has been moved to `langchain.agents`. Please update your import to `from langchain.agents import AgentStatePydantic`. Deprecated in LangGraph V1.0 to be removed in V2.0.
+
+app/__init__.py:7
+  /root/igorekchatbot/app/__init__.py:7: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart  # type: ignore
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.2-final-0 ________________
+
+Name                                          Stmts   Miss  Cover
+-----------------------------------------------------------------
+app/__init__.py                                  69     12    83%
+app/features/__init__.py                          0      0   100%
+app/features/chat/__init__.py                     0      0   100%
+app/features/chat/attachments.py                 97     19    80%
+app/features/chat/router.py                     139     21    85%
+app/features/chat/service.py                    105     88    16%
+app/features/document_analysis/__init__.py        2      0   100%
+app/features/document_analysis/router.py        133     39    71%
+app/features/image_analysis/__init__.py           0      0   100%
+app/features/image_analysis/router.py           105     70    33%
+app/features/image_analysis/service.py           74     61    18%
+app/features/image_generation/__init__.py         0      0   100%
+app/features/image_generation/adapters.py         4      1    75%
+app/features/image_generation/router.py         226    109    52%
+app/features/infra/__init__.py                    0      0   100%
+app/features/infra/browser_tool.py               20     11    45%
+app/features/infra/sandbox_tool.py               20     11    45%
+app/features/mcp/__init__.py                      0      0   100%
+app/features/mcp/client.py                       38     23    39%
+app/features/mcp/router.py                       38     23    39%
+app/features/mcp/service.py                      24     14    42%
+app/features/providers/openai_compatible.py      87     73    16%
+app/features/root/__init__.py                     0      0   100%
+app/features/root/router.py                      19      8    58%
+app/features/search/__init__.py                   0      0   100%
+app/features/search/google_tool.py               95     66    31%
+app/features/seo/__init__.py                      0      0   100%
+app/features/seo/router.py                       20      6    70%
+app/features/uploads/__init__.py                  0      0   100%
+app/features/uploads/cleaner.py                  65     53    18%
+app/features/uploads/router.py                   43     26    40%
+app/logging.py                                   95     46    52%
+app/main.py                                       7      7     0%
+app/middlewares/__init__.py                       0      0   100%
+app/middlewares/cors.py                           5      0   100%
+app/middlewares/security.py                      23     11    52%
+app/middlewares/session.py                       21     13    38%
+app/security.py                                  12     12     0%
+app/security_layer/__init__.py                    0      0   100%
+app/security_layer/dependencies.py               19     13    32%
+app/security_layer/docs.py                       44     22    50%
+app/security_layer/rate_limiter.py               28      3    89%
+app/security_layer/session_manager.py           124     87    30%
+app/security_layer/signed_links.py               66     11    83%
+app/settings.py                                  70      1    99%
+app/utils/__init__.py                             0      0   100%
+app/webui.py                                     41     31    24%
+-----------------------------------------------------------------
+TOTAL                                          1978    991    50%
+Coverage XML written to file reports/backend/coverage.xml
+======================== 15 passed, 2 warnings in 7.77s ========================

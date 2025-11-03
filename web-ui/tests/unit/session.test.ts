@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const importSessionModule = async () => {
-  return import('./session.ts');
+  return import('../../src/utils/session.ts');
 };
 
 describe('session id generation', () => {

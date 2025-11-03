@@ -1,7 +1,12 @@
 import hashlib
 import unittest
 
+import pytest
+
 from image_generation import FINGERPRINT_ITERATIONS, FINGERPRINT_SALT, ImageGenerationManager
+
+
+pytestmark = pytest.mark.unit
 
 
 class FingerprintTests(unittest.TestCase):

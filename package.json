@@ -1,0 +1,12 @@
+{
+  "name": "igorekchatbot-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:backend": "uv run --with pytest-cov pytest --cov=app --cov-report=xml:reports/backend/coverage.xml --cov-report=term",
+    "test:frontend": "npm --prefix web-ui run test:frontend",
+    "test:e2e": "npm --prefix web-ui run test:e2e",
+    "test:all": "npm run test:backend && npm run test:frontend && npm run test:e2e",
+    "lint": "npm --prefix web-ui run lint"
+  }
+}
