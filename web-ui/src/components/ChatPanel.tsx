@@ -35,6 +35,7 @@ interface ChatPanelProps {
   COMMON_COMMANDS: string[];
   pendingAttachments: Array<{ id: string; name: string; kind: 'image' | 'document'; previewUrl?: string; status: 'loading' | 'ready' | 'processing' }>;
   removeAttachment: (id: string) => void;
+  imageAnalysisBlockedReason?: string | null;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -54,6 +55,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   COMMON_COMMANDS,
   pendingAttachments,
   removeAttachment,
+  imageAnalysisBlockedReason,
 }) => {
   const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -108,6 +110,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       console.error('TTS error', error);
     }
   };
+
+  const hasImageAttachments = pendingAttachments.some(attachment => attachment.kind === 'image');
+  const isSendDisabled = isTyping || (Boolean(imageAnalysisBlockedReason) && hasImageAttachments);
 
   return (
     <main className="chat-panel">
@@ -218,6 +223,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             <span className="dot" />
           </div>
         )}
+        {hasImageAttachments && imageAnalysisBlockedReason && (
+          <div className="chat-warning" style={{ color: '#ff8080', marginTop: '0.5rem' }}>
+            {imageAnalysisBlockedReason}
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -314,7 +324,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             multiple
             hidden
           />
-          <button type="submit" className="send-button" disabled={isTyping} title="Отправить">
+          <button
+            type="submit"
+            className="send-button"
+            disabled={isSendDisabled}
+            title={isSendDisabled && hasImageAttachments && imageAnalysisBlockedReason ? imageAnalysisBlockedReason : 'Отправить'}
+          >
             <Send className="icon" />
           </button>
         </div>

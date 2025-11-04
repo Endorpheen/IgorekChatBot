@@ -17,4 +17,5 @@
 | Type | Path | Purpose |
 | --- | --- | --- |
 | unit | web-ui/tests/unit/session.test.ts | Verifies image session id helper prefers `crypto.randomUUID`, falls back to `crypto.getRandomValues`, and persists deterministic ids. |
-| e2e | *(empty)* | Reserve `web-ui/tests/e2e/*.e2e.spec.ts` for Playwright scenarios (none implemented yet). |
+| unit | web-ui/tests/unit/imageAnalysisProvider.test.ts | Ensures image analysis payloads depend on the active provider and emit proper validation hints. |
+| e2e | web-ui/tests/e2e/image-analysis-vision.e2e.spec.ts | Lightweight Vitest-run check that vision heuristics gate non-vision models. |

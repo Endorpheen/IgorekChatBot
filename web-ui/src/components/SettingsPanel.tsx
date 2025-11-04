@@ -3,6 +3,7 @@ import { X, Eye, EyeOff } from 'lucide-react';
 import type { ThreadSettings } from '../types/settings';
 import ImageGenerationSettings from './ImageGenerationSettings';
 import { buildApiUrl } from '../utils/api';
+import { supportsVisionModel } from '../utils/imageProvider';
 
 interface SettingsPanelProps {
   isSettingsOpen: boolean;
@@ -263,11 +264,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   {isLoadingModels ? (
                     <option>Загрузка моделей...</option>
                   ) : availableModels.length > 0 ? (
-                    availableModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))
+                    availableModels.map((model) => {
+                      const label = supportsVisionModel('openrouter', model)
+                        ? `${model} · vision`
+                        : `${model} · text`;
+                      return (
+                        <option key={model} value={model}>
+                          {label}
+                        </option>
+                      );
+                    })
                   ) : (
                     <option disabled>Укажите API ключ для загрузки моделей</option>
                   )}
@@ -344,11 +350,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     {isLoadingAgentModels ? (
                       <option>Загрузка моделей...</option>
                     ) : agentAvailableModels.length > 0 ? (
-                      agentAvailableModels.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))
+                      agentAvailableModels.map((model) => {
+                        const label = supportsVisionModel('agentrouter', model)
+                          ? `${model} · vision`
+                          : `${model} · text`;
+                        return (
+                          <option key={model} value={model}>
+                            {label}
+                          </option>
+                        );
+                      })
                     ) : (
                       <option disabled>Укажите Base URL и API Key для загрузки моделей</option>
                     )}

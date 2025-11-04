@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     rate_limit_mcp_per_minute: int = 30
 
     allowed_agentrouter_base_urls: List[str] = Field(default_factory=list)
+    openrouter_vision_models: List[str] = Field(default_factory=list)
+    agentrouter_vision_models: List[str] = Field(default_factory=list)
 
     openrouter_api_key: Optional[str] = None
     openrouter_model: str = "openai/gpt-4o-mini"

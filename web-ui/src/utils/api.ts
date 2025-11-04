@@ -504,6 +504,7 @@ interface UploadImagesParams {
   settings: ThreadSettings;
   systemPrompt?: string | null;
   prompt?: string;
+  provider: 'openrouter' | 'agentrouter';
 }
 
 export interface ImageUploadResponse {
@@ -522,7 +523,15 @@ export interface ImageUploadResponse {
   }[];
 }
 
-export const uploadImagesForAnalysis = async ({ files, threadId, history, settings, systemPrompt, prompt }: UploadImagesParams): Promise<ImageUploadResponse> => {
+export const uploadImagesForAnalysis = async ({
+  files,
+  threadId,
+  history,
+  settings,
+  systemPrompt,
+  prompt,
+  provider,
+}: UploadImagesParams): Promise<ImageUploadResponse> => {
   const formData = new FormData();
   files.forEach(file => {
     formData.append('files', file);
@@ -539,11 +548,25 @@ export const uploadImagesForAnalysis = async ({ files, threadId, history, settin
   if (systemPrompt && systemPrompt.trim()) {
     formData.append('system_prompt', systemPrompt);
   }
-  if (settings.openRouterApiKey) {
-    formData.append('open_router_api_key', settings.openRouterApiKey);
-  }
-  if (settings.openRouterModel) {
-    formData.append('open_router_model', settings.openRouterModel);
+  if (provider === 'agentrouter') {
+    formData.append('provider_type', 'agentrouter');
+    if (settings.agentRouterApiKey) {
+      formData.append('agent_router_api_key', settings.agentRouterApiKey);
+    }
+    if (settings.agentRouterModel) {
+      formData.append('agent_router_model', settings.agentRouterModel);
+    }
+    if (settings.agentRouterBaseUrl) {
+      formData.append('agent_router_base_url', settings.agentRouterBaseUrl);
+    }
+  } else {
+    formData.append('provider_type', 'openrouter');
+    if (settings.openRouterApiKey) {
+      formData.append('open_router_api_key', settings.openRouterApiKey);
+    }
+    if (settings.openRouterModel) {
+      formData.append('open_router_model', settings.openRouterModel);
+    }
   }
 
   const response = await fetch(buildApiUrl('/image/analyze'), {

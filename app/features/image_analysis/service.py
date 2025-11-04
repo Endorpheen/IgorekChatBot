@@ -134,10 +134,63 @@ def call_openrouter_for_image(messages: list[dict], api_key: str, model: str, or
         )
 
     data = response.json()
-    message = data.get("choices", [{}])[0].get("message") or {}
+    return _extract_image_description(data)
+
+
+def call_agentrouter_for_image(messages: list[dict], api_key: str, model: str, base_url: str) -> str:
+    endpoint = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": settings.max_completion_tokens,
+    }
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=90,
+        )
+    except requests.RequestException as exc:
+        logger.error("[IMAGE ANALYSIS] Ошибка запроса к OpenAI Compatible: %s", exc)
+        raise HTTPException(status_code=502, detail=f"OpenAI Compatible error: {exc}") from exc
+
+    if not response.ok:
+        try:
+            error_payload = response.json()
+            error_detail = error_payload.get("error") or error_payload.get("message")
+        except ValueError:
+            error_detail = response.text
+
+        logger.error(
+            "[IMAGE ANALYSIS] OpenAI Compatible non-OK response: status=%s detail=%s",
+            response.status_code,
+            error_detail,
+        )
+        status = response.status_code
+        if status < 400 or status > 499:
+            status = 502
+        raise HTTPException(
+            status_code=status,
+            detail=f"OpenAI Compatible error ({response.status_code}): {error_detail or 'Unknown error'}",
+        )
+
+    data = response.json()
+    return _extract_image_description(data)
+
+
+def _extract_image_description(payload: dict) -> str:
+    message = payload.get("choices", [{}])[0].get("message") or {}
     content = message.get("content")
     if not content:
-        logger.warning("[IMAGE ANALYSIS] Пустой ответ от OpenRouter: %s", data)
+        logger.warning("[IMAGE ANALYSIS] Пустой ответ от модели: %s", payload)
         return "Не удалось получить описание изображения."
 
     if isinstance(content, list):

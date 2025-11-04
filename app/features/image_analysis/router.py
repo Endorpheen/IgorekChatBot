@@ -8,12 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 from uuid import uuid4
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
 
 from app.features.chat.service import THREAD_MODEL_OVERRIDES
-from app.features.image_analysis.service import build_image_conversation, call_openrouter_for_image
+from app.features.image_analysis.capabilities import fallback_vision_model, model_supports_vision
+from app.features.image_analysis.service import build_image_conversation, call_agentrouter_for_image, call_openrouter_for_image
 from app.logging import get_logger
 from app.middlewares.security import _require_csrf_token
 from app.security_layer.dependencies import require_session
@@ -52,6 +54,10 @@ async def analyze_image_endpoint(
     history: str = Form("[]"),
     open_router_api_key: str | None = Form(default=None),
     open_router_model: str | None = Form(default=None),
+    agent_router_api_key: str | None = Form(default=None),
+    agent_router_model: str | None = Form(default=None),
+    agent_router_base_url: str | None = Form(default=None),
+    provider_type: str = Form(default="openrouter"),
     system_prompt: str | None = Form(default=None),
     history_message_count: int = Form(default=5),
     session=Depends(require_session),
@@ -81,18 +87,9 @@ async def analyze_image_endpoint(
         bool(message.strip()),
     )
 
-    actual_api_key = open_router_api_key or settings.openrouter_api_key
-    sanitized_model = (open_router_model or "").strip()
-    if sanitized_model:
-        THREAD_MODEL_OVERRIDES[thread_id] = sanitized_model
-
-    model_from_thread = THREAD_MODEL_OVERRIDES.get(thread_id)
-    actual_model = model_from_thread or settings.openrouter_model
-
-    if not actual_api_key:
-        raise HTTPException(status_code=400, detail="OpenRouter API ключ не настроен")
-    if not actual_model:
-        raise HTTPException(status_code=400, detail="OpenRouter модель не настроена")
+    provider = (provider_type or "openrouter").strip().lower()
+    if provider not in {"openrouter", "agentrouter"}:
+        provider = "openrouter"
 
     try:
         history_payload = json.loads(history) if history else []
@@ -153,6 +150,62 @@ async def analyze_image_endpoint(
 
     origin = request.headers.get("Origin") or request.headers.get("Referer")
 
+    if provider == "agentrouter":
+        actual_api_key = (agent_router_api_key or "").strip() or None
+        actual_model = (agent_router_model or "").strip() or None
+        base_url = (agent_router_base_url or "").strip() or None
+
+        if not actual_api_key:
+            raise HTTPException(status_code=400, detail="OpenAI Compatible API ключ не настроен")
+        if not base_url:
+            raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint не настроен")
+
+        try:
+            parsed = urlparse(base_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint некорректен") from exc
+
+        if parsed.scheme.lower() != "https":
+            raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint должен использовать HTTPS")
+
+        normalized_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+        allowlist = {item.rstrip("/").lower() for item in settings.allowed_agentrouter_base_urls}
+        if allowlist and normalized_origin not in allowlist:
+            raise HTTPException(status_code=403, detail="OpenAI Compatible endpoint не разрешён")
+
+        if not actual_model:
+            fallback_model = fallback_vision_model("agentrouter")
+            if fallback_model and model_supports_vision("agentrouter", fallback_model):
+                actual_model = fallback_model
+            else:
+                raise HTTPException(status_code=400, detail="OpenAI Compatible модель не настроена")
+
+        if not model_supports_vision("agentrouter", actual_model):
+            raise HTTPException(status_code=400, detail="Эта модель OpenAI Compatible не поддерживает анализ изображений.")
+
+    else:
+        actual_api_key = (open_router_api_key or settings.openrouter_api_key or "").strip() or None
+
+        sanitized_model = (open_router_model or "").strip()
+        if sanitized_model:
+            THREAD_MODEL_OVERRIDES[thread_id] = sanitized_model
+
+        model_from_thread = THREAD_MODEL_OVERRIDES.get(thread_id)
+        actual_model = (model_from_thread or settings.openrouter_model or "").strip() or None
+
+        if not actual_api_key:
+            raise HTTPException(status_code=400, detail="OpenRouter API ключ не настроен")
+        if not actual_model:
+            fallback_model = fallback_vision_model("openrouter")
+            if fallback_model and model_supports_vision("openrouter", fallback_model):
+                actual_model = fallback_model
+                THREAD_MODEL_OVERRIDES[thread_id] = actual_model
+            else:
+                raise HTTPException(status_code=400, detail="OpenRouter модель не настроена")
+
+        if not model_supports_vision("openrouter", actual_model):
+            raise HTTPException(status_code=400, detail="Выбранная модель OpenRouter не поддерживает анализ изображений.")
+
     messages = build_image_conversation(
         history=history_payload,
         thread_id=thread_id,
@@ -163,12 +216,20 @@ async def analyze_image_endpoint(
     )
 
     try:
-        response_text = call_openrouter_for_image(
-            messages=messages,
-            api_key=actual_api_key,
-            model=actual_model,
-            origin=origin,
-        )
+        if provider == "agentrouter":
+            response_text = call_agentrouter_for_image(
+                messages=messages,
+                api_key=actual_api_key,
+                model=actual_model,
+                base_url=base_url,
+            )
+        else:
+            response_text = call_openrouter_for_image(
+                messages=messages,
+                api_key=actual_api_key,
+                model=actual_model,
+                origin=origin,
+            )
     except HTTPException as exc:
         if exc.status_code == 502 and "does not support" in str(exc.detail).lower():
             raise HTTPException(status_code=400, detail="Выбранная модель не поддерживает работу с изображениями.") from exc

@@ -5,6 +5,8 @@ import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
 import { analyzeDocument, callAgent, uploadImagesForAnalysis } from './utils/api';
+import type { ImageProvider } from './utils/imageProvider';
+import { providerSupportsVision, validateImageProviderSettings, pickFallbackVisionModel, supportsVisionModel } from './utils/imageProvider';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -279,6 +281,66 @@ const AppContent = () => {
     setThreadSettings((prev: ThreadSettingsMap) => ({ ...prev, [threadId]: { ...getCurrentThreadSettings(), ...updates } }));
   };
 
+  type VisionCheckResult =
+    | { provider: ImageProvider; settings: ThreadSettings; supported: true; info?: string }
+    | { provider: ImageProvider; settings: ThreadSettings; supported: false; error: string };
+
+  const ensureVisionProvider = (settings: ThreadSettings): VisionCheckResult => {
+    const provider = (settings.chatProvider ?? 'openrouter') as ImageProvider;
+    if (providerSupportsVision(provider, settings)) {
+      return { provider, settings, supported: true };
+    }
+
+    if (provider === 'openrouter') {
+      const fallback = pickFallbackVisionModel('openrouter');
+      if (fallback && fallback !== settings.openRouterModel && supportsVisionModel('openrouter', fallback)) {
+        const nextSettings: ThreadSettings = { ...settings, openRouterModel: fallback };
+        updateCurrentThreadSettings({ openRouterModel: fallback });
+        return {
+          provider,
+          settings: nextSettings,
+          supported: true,
+          info: `Модель переключена на ${fallback} для анализа изображений.`,
+        };
+      }
+    } else {
+      const fallback = pickFallbackVisionModel('agentrouter');
+      if (
+        fallback &&
+        fallback !== settings.agentRouterModel &&
+        supportsVisionModel('agentrouter', fallback) &&
+        settings.agentRouterApiKey?.trim() &&
+        settings.agentRouterBaseUrl?.trim()
+      ) {
+        const nextSettings: ThreadSettings = { ...settings, agentRouterModel: fallback };
+        updateCurrentThreadSettings({ agentRouterModel: fallback });
+        return {
+          provider,
+          settings: nextSettings,
+          supported: true,
+          info: `Модель переключена на ${fallback} для анализа изображений.`,
+        };
+      }
+
+      if (
+        settings.openRouterApiKey?.trim() &&
+        supportsVisionModel('openrouter', settings.openRouterModel)
+      ) {
+        const nextSettings: ThreadSettings = { ...settings, chatProvider: 'openrouter' };
+        updateCurrentThreadSettings({ chatProvider: 'openrouter' });
+        return {
+          provider: 'openrouter',
+          settings: nextSettings,
+          supported: true,
+          info: 'Провайдер переключён на OpenRouter для анализа изображений.',
+        };
+      }
+    }
+
+    const reason = validateImageProviderSettings(provider, settings) ?? 'Эта модель без vision.';
+    return { provider, settings, supported: false, error: reason };
+  };
+
   useEffect(() => {
     localStorage.setItem('roo_agent_thread_settings', JSON.stringify(threadSettings));
   }, [threadSettings]);
@@ -334,6 +396,13 @@ const AppContent = () => {
       setThreadNames(prev => ({ ...prev, [id]: newName.trim() }));
     }
   };
+
+  const latestThreadSettings = getCurrentThreadSettings();
+  const activeProvider = (latestThreadSettings.chatProvider ?? 'openrouter') as 'openrouter' | 'agentrouter';
+  const hasPendingImages = pendingAttachments.some(attachment => attachment.kind === 'image');
+  const imageAnalysisBlockedReason = hasPendingImages && !providerSupportsVision(activeProvider, latestThreadSettings)
+    ? validateImageProviderSettings(activeProvider, latestThreadSettings)
+    : null;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -410,11 +479,9 @@ const AppContent = () => {
       return;
     }
 
-    const currentSettings = getCurrentThreadSettings();
-    const provider = currentSettings.chatProvider ?? 'openrouter';
-    const _userApiKey = provider === 'agentrouter' ? (currentSettings.agentRouterApiKey ?? '') : currentSettings.openRouterApiKey;
-    const _selectedModel = provider === 'agentrouter' ? (currentSettings.agentRouterModel ?? '') : currentSettings.openRouterModel;
-    void [_userApiKey, _selectedModel];
+    const snapshotSettings = getCurrentThreadSettings();
+    let provider = (snapshotSettings.chatProvider ?? 'openrouter') as 'openrouter' | 'agentrouter';
+    let effectiveSettings = snapshotSettings;
     const historyMessages = messages.filter(msg => msg.threadId === threadId);
 
     if (trimmed) {
@@ -446,6 +513,34 @@ const AppContent = () => {
     let documentProcessed = false;
 
     try {
+      if (hasImages) {
+        const visionResult = ensureVisionProvider(effectiveSettings);
+        provider = visionResult.provider;
+        effectiveSettings = visionResult.settings;
+
+        if (!visionResult.supported) {
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: visionResult.error ?? 'Эта модель не поддерживает анализ изображений.',
+            threadId,
+          });
+          setIsSettingsOpen(true);
+          setIsTyping(false);
+          setIsAwaitingImageDescription(false);
+          return;
+        }
+
+        if (visionResult.info) {
+          persistMessage({
+            type: 'bot',
+            contentType: 'text',
+            content: visionResult.info,
+            threadId,
+          });
+        }
+      }
+
       if (shouldSendText) {
         const payload: Parameters<typeof callAgent>[0] = {
           message: trimmed,
@@ -456,13 +551,13 @@ const AppContent = () => {
 
         if (provider === 'agentrouter') {
           payload.providerType = 'agentrouter';
-          payload.agentRouterApiKey = currentSettings.agentRouterApiKey;
-          payload.agentRouterModel = currentSettings.agentRouterModel;
-          payload.agentRouterBaseUrl = currentSettings.agentRouterBaseUrl;
+          payload.agentRouterApiKey = effectiveSettings.agentRouterApiKey;
+          payload.agentRouterModel = effectiveSettings.agentRouterModel;
+          payload.agentRouterBaseUrl = effectiveSettings.agentRouterBaseUrl;
         } else {
           payload.providerType = 'openrouter';
-          payload.openRouterApiKey = currentSettings.openRouterApiKey;
-          payload.openRouterModel = currentSettings.openRouterModel;
+          payload.openRouterApiKey = effectiveSettings.openRouterApiKey;
+          payload.openRouterModel = effectiveSettings.openRouterModel;
         }
         try {
           const response = await callAgent(payload);
@@ -502,25 +597,16 @@ const AppContent = () => {
       }
 
       if (hasImages) {
-        if (!currentSettings.openRouterApiKey) {
-          persistMessage({
-            type: 'bot',
-            contentType: 'text',
-            content: 'Для анализа изображений укажите API ключ OpenRouter в настройках этого треда.',
-            threadId,
-          });
-          return;
-        }
-
         const systemPrompt = localStorage.getItem('systemPrompt');
         try {
           const response = await uploadImagesForAnalysis({
             files: imageAttachments.map(attachment => attachment.file),
             threadId,
             history: historyMessages,
-            settings: currentSettings,
+            settings: effectiveSettings,
             systemPrompt,
             prompt: trimmed,
+            provider,
           });
 
           const targetThreadId = response.thread_id ?? threadId;
@@ -567,7 +653,7 @@ const AppContent = () => {
             file: documentAttachments[0].file,
             threadId,
             history: historyMessages,
-            settings: currentSettings,
+            settings: effectiveSettings,
             systemPrompt,
             query: trimmed,
             provider,
@@ -750,6 +836,7 @@ const AppContent = () => {
                   COMMON_COMMANDS={COMMON_COMMANDS}
                   pendingAttachments={pendingAttachments}
                   removeAttachment={handleRemoveAttachment}
+                  imageAnalysisBlockedReason={imageAnalysisBlockedReason}
                 />
               </div>
               <Footer

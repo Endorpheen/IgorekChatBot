@@ -2,25 +2,26 @@
 [1m[46m RUN [49m[22m [36mv4.0.6 [39m[90m/root/igorekchatbot/web-ui[39m
       [2mCoverage enabled with [22m[33mv8[39m
 
- [32m✓[39m tests/unit/session.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 24[2mms[22m[39m
- [32m✓[39m tests/unit/agentRouterFallback.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/session.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m tests/unit/agentRouterFallback.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/imageAnalysisProvider.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
 
-[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
-[2m      Tests [22m [1m[32m19 passed[39m[22m[90m (19)[39m
-[2m   Start at [22m 03:10:41
-[2m   Duration [22m 1.59s[2m (transform 110ms, setup 0ms, collect 140ms, tests 41ms, environment 1ms, prepare 53ms)[22m
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m25 passed[39m[22m[90m (25)[39m
+[2m   Start at [22m 05:41:31
+[2m   Duration [22m 1.78s[2m (transform 154ms, setup 0ms, collect 186ms, tests 43ms, environment 1ms, prepare 78ms)[22m
 
 [34m % [39m[2mCoverage report from [22m[33mv8[39m
 -------------------|---------|----------|---------|---------|-------------------
 File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
 -------------------|---------|----------|---------|---------|-------------------
-All files          |     1.3 |     0.65 |    0.66 |    1.37 |                   
+All files          |    2.75 |     2.02 |    2.17 |    2.76 |                   
  src               |       0 |        0 |       0 |       0 |                   
-  App.tsx          |       0 |        0 |       0 |       0 | 38-791            
+  App.tsx          |       0 |        0 |       0 |       0 | 39-873            
   main.tsx         |       0 |      100 |     100 |       0 | 6                 
   vite-env.d.ts    |       0 |        0 |       0 |       0 |                   
  src/components    |       0 |        0 |       0 |       0 |                   
-  ChatPanel.tsx    |       0 |        0 |       0 |       0 | 7-329             
+  ChatPanel.tsx    |       0 |        0 |       0 |       0 | 7-344             
   CodeBlock.tsx    |       0 |        0 |       0 |       0 | 13-42             
   CopyButton.tsx   |       0 |        0 |       0 |       0 | 8-36              
   ...vaiWidget.tsx |       0 |        0 |       0 |       0 | 3-99              
@@ -29,7 +30,7 @@ All files          |     1.3 |     0.65 |    0.66 |    1.37 |
   ...tionPanel.tsx |       0 |        0 |       0 |       0 | 39-1056           
   ...nSettings.tsx |       0 |        0 |       0 |       0 | 38-441            
   McpPanel.tsx     |       0 |        0 |       0 |       0 | 8-217             
-  ...ingsPanel.tsx |       0 |        0 |       0 |       0 | 17-436            
+  ...ingsPanel.tsx |       0 |        0 |       0 |       0 | 18-447            
   ThreadsPanel.tsx |       0 |        0 |       0 |       0 | 28-159            
  src/constants     |       0 |      100 |     100 |       0 |                   
   chat.ts          |       0 |      100 |     100 |       0 | 1-3               
@@ -50,8 +51,9 @@ All files          |     1.3 |     0.65 |    0.66 |    1.37 |
   global.d.ts      |       0 |        0 |       0 |       0 |                   
   image.ts         |       0 |        0 |       0 |       0 |                   
   settings.ts      |       0 |        0 |       0 |       0 |                   
- src/utils         |    8.62 |     4.29 |   10.34 |    8.76 |                   
-  api.ts           |       0 |        0 |       0 |       0 | 17-797            
+ src/utils         |   16.27 |    11.76 |   27.77 |   15.91 |                   
+  api.ts           |       0 |        0 |       0 |       0 | 17-820            
   csrf.ts          |       0 |        0 |       0 |       0 | 1-74              
+  imageProvider.ts |      76 |    59.52 |     100 |   74.46 | ...,86,95,106,111 
   session.ts       |   78.04 |       55 |     100 |   78.04 | ...33,47-48,55-59 
 -------------------|---------|----------|---------|---------|-------------------
