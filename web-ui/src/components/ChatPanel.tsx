@@ -123,7 +123,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           }
 
           return (
-            <div key={msg.id} className={`chat-message chat-message--${msg.type}`}>
+            <div
+              key={msg.id}
+              className={`chat-message chat-message--${msg.type}`}
+              data-testid="chat-message"
+              data-role={msg.type}
+            >
               <span className="chat-prefix">{msg.type === 'user' ? '>' : '$'}</span>
               {msg.contentType === 'text' ? (
                 <div className="chat-content">
@@ -154,6 +159,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                         href={msg.url}
                         target="_blank"
                         rel="noopener noreferrer"
+                        data-testid="chat-attachment-download"
                       >
                         Скачать
                       </a>
@@ -223,11 +229,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
       <form className="chat-form" onSubmit={handleSubmit}>
         {pendingAttachments.length > 0 && (
-          <div className="attachment-preview-list">
+          <div className="attachment-preview-list" data-testid="pending-attachments">
             {pendingAttachments.map(attachment => (
               <div
                 key={attachment.id}
                 className={`attachment-preview-item ${attachment.kind === 'document' ? 'attachment-preview-item--document' : ''}`}
+                data-testid={`pending-attachment-${attachment.kind}`}
               >
                 {attachment.kind === 'document' ? (
                   <div className="attachment-document-card">
@@ -279,7 +286,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             ))}
           </div>
         )}
-        <div className="chat-input-container">
+        <div className="chat-input-container" data-testid="chat-input-container">
           <input
             type="text"
             className="chat-input"
@@ -287,6 +294,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             value={input}
             onChange={handleInputChange}
             disabled={isTyping}
+            data-testid="chat-input"
           />
           <button
             type="button"
@@ -294,6 +302,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onClick={handleVoiceInput}
             disabled={isTyping}
             title="Голосовой ввод"
+            data-testid="chat-voice"
           >
             <Mic className="icon" />
           </button>
@@ -303,6 +312,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onClick={triggerFileInput}
             disabled={isTyping}
             title="Прикрепить файл"
+            data-testid="chat-attach-trigger"
           >
             <Upload className="icon" />
           </button>
@@ -313,8 +323,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onChange={handleFileUpload}
             multiple
             hidden
+            data-testid="chat-file-input"
           />
-          <button type="submit" className="send-button" disabled={isTyping} title="Отправить">
+          <button
+            type="submit"
+            className="send-button"
+            disabled={isTyping}
+            title="Отправить"
+            data-testid="chat-send"
+          >
             <Send className="icon" />
           </button>
         </div>

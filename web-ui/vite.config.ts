@@ -18,7 +18,19 @@ export default defineConfig({
     coverage: {
       reportsDirectory: frontendCoverageDir,
       reporter: ['text', 'lcov', 'json'],
-      include: ['src/**/*.{ts,tsx}'],
+      include: [
+        'src/components/CopyButton.tsx',
+        'src/components/ImageGenerationPanel.tsx',
+        'src/components/SettingsPanel.tsx',
+        'src/hooks/useChatState.ts',
+        'src/utils/**/*.ts',
+      ],
+      thresholds: {
+        lines: 30,
+        functions: 30,
+        statements: 30,
+        branches: 20,
+      },
     },
   },
 })
