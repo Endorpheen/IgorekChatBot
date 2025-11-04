@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('AgentRouter Fallback Logic', () => {
   describe('API Response Handling', () => {
@@ -101,7 +101,7 @@ describe('AgentRouter Fallback Logic', () => {
     });
 
     it('should maintain fallback state when staying on AgentRouter', () => {
-      let fallbackState = true;
+      const fallbackState = true;
       let currentProvider = 'agentrouter';
 
       // Stay on same provider
@@ -177,7 +177,6 @@ describe('AgentRouter Fallback Logic', () => {
     });
 
     it('should not show fallback message for successful responses', () => {
-      const fallbackMessage = 'Сервис вернул ошибку 400/404. Введите идентификатор модели вручную.';
       const shouldShowMessage = false; // !fallbackEnabled
 
       expect(shouldShowMessage).toBe(false);
