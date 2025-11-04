@@ -4,11 +4,12 @@
 
 ## Что уже покрыто
 - Backend integration — чатовые вложения (`tests/integration/test_chat_attachments.py`), анализ документов (`tests/integration/test_document_analysis.py`), редиректы генерации изображений (`tests/integration/test_image_generation_redirects.py`), чат сервис (`tests/integration/test_chat_service.py`) с проверкой OpenRouter override, AgentRouter args, tool-failure handling.
-- Backend unit — PBKDF2-фингерпринты BYOK (`tests/unit/test_image_generation_fingerprint.py`), Session manager (выдача, верификация, истечение токенов, legacy режим) (`tests/unit/test_session_manager.py`), Signed links (генерация, валидация, ошибки, истечение) (`tests/unit/test_signed_links.py`).
+- Backend integration — Upload cleaner (`tests/integration/test_upload_cleaner.py`), Google Search provider (`tests/integration/test_google_search_provider.py`), MCP tools (`tests/integration/test_mcp_tools.py`).
+- Backend unit — PBKDF2-фингерпринты BYOK (`tests/unit/test_image_generation_fingerprint.py`), Session manager (выдача, верификация, истечение токенов, legacy режим) (`tests/unit/test_session_manager.py`), Signed links (генерация, валидация, ошибки, истечение) (`tests/unit/test_signed_links.py`), Rate limiting & CSRF (`tests/unit/test_rate_limiting_csrf.py`).
 - Frontend unit — генератор session-id для image API (`web-ui/tests/unit/session.test.ts`), AgentRouter fallback логика (`web-ui/tests/unit/agentRouterFallback.test.ts`).
 
 ## Текущее покрытие
-- Backend: **57%** (см. `reports/backend/coverage.xml`). Улучшение на +7% благодаря новым unit-тестам Session manager (89% покрытие) и Signed links (97% покрытие).
+- Backend: **62%** (см. `reports/backend/coverage.xml`). Улучшение на +12% благодаря новым unit и integration тестам.
 - Frontend: **~5%** (оценочно). Добавлен новый unit-тест для AgentRouter fallback логики (16 тестов).
 
 ## Что добавить
@@ -17,13 +18,13 @@
 | --- | --- | --- | --- |
 | ~~Chat service: генерация ответов с разными провайдерами, подхват `THREAD_MODEL_OVERRIDES`, ошибки Tool-режима~~ | ~~integration~~ | ~~P0~~ | ~~✅ ПОКРЫТО: `tests/integration/test_chat_service.py` проверяет OpenRouter override, AgentRouter args, tool-failure → API_ERROR_GENERATING_RESPONSE.~~ |
 | ~~Session manager + signed links: выдача, продление, истечение хеша~~ | ~~unit~~ | ~~P0~~ | ~~✅ ПОКРЫТО: `tests/unit/test_session_manager.py` (29 тестов) и `tests/unit/test_signed_links.py` (20 тестов).~~ |
-| Upload cleaner: ротация старых файлов и SQLite-очистка | integration | P1 | Старые записи удаляются, новые не затрагиваются, операции безопасны при отсутствии файлов. |
-| Search provider (Google Custom Search) happy-path и graceful fallback | integration | P1 | Корректная сборка запросов, кэширование, graceful деградация при ошибке API. |
+| ~~Upload cleaner: ротация старых файлов и SQLite-очистка~~ | ~~integration~~ | ~~P1~~ | ~~✅ ПОКРЫТО: `tests/integration/test_upload_cleaner.py` проверяет TTL очистку, размерные лимиты, обработку ошибок.~~ |
+| ~~Search provider (Google Custom Search) happy-path и graceful fallback~~ | ~~integration~~ | ~~P1~~ | ~~✅ ПОКРЫТО: `tests/integration/test_google_search_provider.py` проверяет кэширование, rate limiting, обработку ошибок.~~ |
 | ~~Web UI: SettingsPanel переключение провайдера, ручной ввод модели (новый fallback)~~ | ~~unit~~ | ~~P0~~ | ~~✅ ПОКРЫТО: `web-ui/tests/unit/agentRouterFallback.test.ts` (16 тестов) проверяет fallback логику при 400/404 ошибках.~~ |
 | Web UI: ImageGenerationPanel end-to-end (Playwright) | e2e | P1 | Пользователь запускает задачу, видит очередь, скачивает результат через подписанную ссылку. |
 | Web UI: ChatPanel streaming + attachments | e2e | P1 | Отправка сообщения создаёт вложение, ссылка скачивается, состояние IndexedDB восстанавливается. |
-| Security layer: rate limiting и CSRF-подписка | unit | P2 | Лимитер считает обращения, CSRF хедеры выдаются и требуются. |
-| MCP client tools: sandbox и browser tool happy-path/ошибки | integration | P2 | Возврат структурированного результата, корректная обработка исключений. |
+| ~~Security layer: rate limiting и CSRF-подписка~~ | ~~unit~~ | ~~P2~~ | ~~✅ ПОКРЫТО: `tests/unit/test_rate_limiting_csrf.py` (15 тестов) проверяет лимиты, токены, валидацию origin.~~ |
+| ~~MCP client tools: sandbox и browser tool happy-path/ошибки~~ | ~~integration~~ | ~~P2~~ | ~~✅ ПОКРЫТО: `tests/integration/test_mcp_tools.py` проверяет Obsidian client, sandbox, browser инструменты.~~ |
 
 ## Зависимости для будущих e2e
 - Создать `playwright.config.ts`, подготавливать test fixtures для локального API / моков.
