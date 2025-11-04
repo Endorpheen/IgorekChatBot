@@ -48,7 +48,14 @@ def register_webui(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/web-ui/{path_file}")
     async def serve_root_files(path_file: str):
-        file_path = webui_dir / path_file
+        # Normalize and verify path_file to prevent path traversal
+        base_dir = webui_dir.resolve()
+        try:
+            file_path = (webui_dir / path_file).resolve()
+        except Exception:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if not str(file_path).startswith(str(base_dir)):
+            raise HTTPException(status_code=404, detail="Not Found")
         if file_path.is_file():
             return FileResponse(file_path)
         raise HTTPException(status_code=404, detail="Not Found")
