@@ -5,6 +5,7 @@ import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import type { ThreadSettings, ThreadSettingsMap } from './types/chat';
 import { analyzeDocument, callAgent, uploadImagesForAnalysis } from './utils/api';
+import { validateImageProviderSettings } from './utils/imageProvider';
 import { COMMON_COMMANDS } from './constants/chat';
 import { useChatState } from './hooks/useChatState';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -502,11 +503,12 @@ const AppContent = () => {
       }
 
       if (hasImages) {
-        if (!currentSettings.openRouterApiKey) {
+        const validationMessage = validateImageProviderSettings(provider, currentSettings);
+        if (validationMessage) {
           persistMessage({
             type: 'bot',
             contentType: 'text',
-            content: 'Для анализа изображений укажите API ключ OpenRouter в настройках этого треда.',
+            content: validationMessage,
             threadId,
           });
           return;
@@ -521,6 +523,7 @@ const AppContent = () => {
             settings: currentSettings,
             systemPrompt,
             prompt: trimmed,
+            provider,
           });
 
           const targetThreadId = response.thread_id ?? threadId;
