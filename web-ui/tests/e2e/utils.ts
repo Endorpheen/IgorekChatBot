@@ -47,6 +47,7 @@ const readAsset = async (relativePath: string) => {
 export const serveStaticApp = async (route: Route) => {
   const request = route.request();
   const url = new URL(request.url());
+
   if (!url.hostname.includes('127.0.0.1')) {
     await route.continue();
     return;

@@ -13,6 +13,8 @@ VENV_ROOT = ROOT / ".venv"
 FRONTEND_ROOT = ROOT / "web-ui"
 FRONTEND_UNIT_ROOT = FRONTEND_ROOT / "tests" / "unit"
 FRONTEND_E2E_ROOT = FRONTEND_ROOT / "tests" / "e2e"
+FRONTEND_E2E_EXTRA_FILES = {FRONTEND_E2E_ROOT / "utils.ts"}
+FRONTEND_E2E_EXTRA_DIRS = {FRONTEND_E2E_ROOT / "fixtures"}
 
 
 def fail(message: str) -> int:
@@ -72,7 +74,17 @@ def validate_frontend() -> int:
             )
 
     for extraneous in FRONTEND_E2E_ROOT.rglob("*"):
-        if extraneous.is_file() and extraneous.name not in {'.gitkeep'} and not extraneous.name.endswith(".e2e.spec.ts"):
+        if extraneous == FRONTEND_E2E_ROOT:
+            continue
+        if extraneous in FRONTEND_E2E_EXTRA_FILES:
+            continue
+        if any(extraneous.is_relative_to(extra_dir) for extra_dir in FRONTEND_E2E_EXTRA_DIRS):
+            continue
+        if extraneous.is_dir():
+            continue
+        if extraneous.name == '.gitkeep':
+            continue
+        if not extraneous.name.endswith(".e2e.spec.ts"):
             exit_code |= fail(
                 f"Files in tests/e2e must end with .e2e.spec.ts (found {extraneous.relative_to(FRONTEND_ROOT)})"
             )
