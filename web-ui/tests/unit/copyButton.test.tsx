@@ -2,26 +2,33 @@
 import '@testing-library/jest-dom/vitest';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CopyButton from '../../src/components/CopyButton';
 
 describe('CopyButton', () => {
   const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const originalExecCommand = (document as Partial<Document> & Record<string, unknown>).execCommand;
+  let user: ReturnType<typeof userEvent.setup>;
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    user = userEvent.setup();
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
+    vi.resetAllMocks();
+    cleanup();
 
     if (originalClipboardDescriptor) {
       Object.defineProperty(navigator, 'clipboard', { ...originalClipboardDescriptor });
     } else {
       delete (navigator as Record<string, unknown>).clipboard;
+    }
+
+    if (originalExecCommand) {
+      (document as Record<string, unknown>).execCommand = originalExecCommand;
+    } else {
+      delete (document as Record<string, unknown>).execCommand;
     }
   });
 
@@ -32,17 +39,17 @@ describe('CopyButton', () => {
       value: { writeText },
     });
 
-    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-    render(<CopyButton code="console.log('hello');" />);
+    render(<CopyButton code="console.log('hello');" resetDelayMs={100} />);
 
     await user.click(screen.getByRole('button', { name: 'Копировать код' }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText).toHaveBeenCalledWith("console.log('hello');");
-    expect(screen.getByText('Скопировано!')).toBeInTheDocument();
+    expect(await screen.findByText('Скопировано!')).toBeInTheDocument();
 
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(screen.queryByText('Скопировано!')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Скопировано!')).not.toBeInTheDocument();
+    });
   });
 
   it('использует document.execCommand, когда clipboard API недоступен', async () => {
@@ -50,15 +57,15 @@ describe('CopyButton', () => {
     const execCommand = vi.fn().mockReturnValue(true);
     (document as unknown as { execCommand: (command: string) => boolean }).execCommand = execCommand;
 
-    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-    render(<CopyButton code="alert('fallback');" />);
+    render(<CopyButton code="alert('fallback');" resetDelayMs={100} />);
 
     await user.click(screen.getByRole('button', { name: 'Копировать код' }));
 
     expect(execCommand).toHaveBeenCalledWith('copy');
-    expect(screen.getByText('Скопировано!')).toBeInTheDocument();
+    expect(await screen.findByText('Скопировано!')).toBeInTheDocument();
 
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(screen.queryByText('Скопировано!')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Скопировано!')).not.toBeInTheDocument();
+    });
   });
 });

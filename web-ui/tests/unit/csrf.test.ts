@@ -51,7 +51,7 @@ describe('csrf utilities', () => {
   });
 
   it('повторно использует один и тот же токен и сохраняет его в sessionStorage и cookie', async () => {
-    const sessionSpy = vi.spyOn(window.sessionStorage, 'setItem');
+    const sessionSpy = vi.spyOn(Storage.prototype, 'setItem');
     const { ensureCsrfToken, buildCsrfHeader } = await importCsrfModule();
 
     const firstToken = ensureCsrfToken();

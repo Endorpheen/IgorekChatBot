@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 import type { Route } from '@playwright/test';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const distDir = path.resolve(__dirname, '../../dist');
 const assetCache = new Map<string, Buffer>();
@@ -40,7 +44,7 @@ const readAsset = async (relativePath: string) => {
 };
 
 const serveStaticApp = async (route: Route) => {
-  const { request } = route;
+  const request = route.request();
   const url = new URL(request.url());
   if (!url.hostname.includes('127.0.0.1')) {
     await route.continue();
@@ -116,16 +120,18 @@ test.describe('Фронтенд: smoke-навигация', () => {
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
     await expect(page.getByText('Игорёк очень любит галлюцинации')).toBeVisible();
 
-    const sortButton = page.getByRole('button', { name: /Новые/ });
-    const initialLabel = await sortButton.innerText();
-    await sortButton.click();
+    const sortButton = page.getByTestId('thread-sort-toggle');
+    const initialLabel = (await sortButton.textContent()) ?? '';
     await expect(sortButton).toBeVisible();
-    await expect(sortButton).not.toHaveText(initialLabel);
+    await sortButton.click();
+    const toggledText = initialLabel.includes('сверху') ? 'Новые снизу' : 'Новые сверху';
+    await expect(sortButton).toHaveText(toggledText);
 
-    await expect(page.getByRole('button', { name: 'Главный тред' })).toBeVisible();
+    await expect(page.locator('[data-thread-name="Главный тред"]')).toBeVisible();
   });
 
   test('навигация к генерации изображений показывает панель настроек', async ({ page }) => {
@@ -150,12 +156,13 @@ test.describe('Фронтенд: smoke-навигация', () => {
     });
 
     await page.goto('/');
-    await page.getByRole('button', { name: 'Генерация' }).click();
+    await page.waitForLoadState('networkidle');
+    await page.getByTestId('nav-images').click();
 
     await expect(page).toHaveURL(/\/images$/);
     await expect(page.getByRole('button', { name: 'Сгенерировать' })).toBeVisible();
 
-    await page.getByRole('button', { name: '← В чат' }).click();
+    await page.getByTestId('back-to-chat').click();
     await expect(page).toHaveURL('/');
   });
 });
