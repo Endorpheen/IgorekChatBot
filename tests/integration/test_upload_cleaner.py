@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -48,7 +49,7 @@ class TestUploadCleanerOnce:
         # Make old file appear old (2 days ago)
         two_days_ago = datetime.utcnow() - timedelta(days=2)
         old_time = two_days_ago.timestamp()
-        old_file.touch(times=(old_time, old_time))
+        os.utime(old_file, (old_time, old_time))
 
         # Run cleanup
         removed, total_size = cleanup_uploads_once(test_settings, temp_upload_dir)
@@ -82,20 +83,22 @@ class TestUploadCleanerOnce:
         large_file = temp_upload_dir / "large.txt"
 
         small_file.write_text("small")  # 5 bytes
-        large_file.write_text("x" * 2000)  # 2000 bytes
+        large_size = test_settings.upload_max_total_bytes + 1024
+        large_file.write_bytes(b"x" * large_size)
 
         # Make files appear recent (no TTL cleanup)
         recent_time = datetime.utcnow().timestamp()
-        small_file.touch(times=(recent_time, recent_time))
-        large_file.touch(times=(recent_time, recent_time))
+        os.utime(small_file, (recent_time, recent_time))
+        os.utime(large_file, (recent_time, recent_time))
 
         # Run cleanup - should remove large files first
         removed, total_size = cleanup_uploads_once(test_settings, temp_upload_dir)
 
         # Should remove files to stay under limit
         assert removed >= 1
-        assert total_size <= test_settings.upload_max_total_bytes
         assert small_file.exists()  # Small file should remain
+        assert not large_file.exists()
+        assert total_size <= test_settings.upload_max_total_bytes
 
     def test_cleanup_with_disabled_ttl(self, temp_upload_dir: Path) -> None:
         # Settings with TTL disabled
@@ -110,7 +113,7 @@ class TestUploadCleanerOnce:
         old_file = temp_upload_dir / "old.txt"
         old_file.write_text("old content")
         old_time = (datetime.utcnow() - timedelta(days=2)).timestamp()
-        old_file.touch(times=(old_time, old_time))
+        os.utime(old_file, (old_time, old_time))
 
         # Run cleanup
         removed, total_size = cleanup_uploads_once(settings, temp_upload_dir)
@@ -139,8 +142,8 @@ class TestUploadCleanerOnce:
 
         # Make files old
         old_time = (datetime.utcnow() - timedelta(days=2)).timestamp()
-        root_file.touch(times=(old_time, old_time))
-        nested_file.touch(times=(old_time, old_time))
+        os.utime(root_file, (old_time, old_time))
+        os.utime(nested_file, (old_time, old_time))
 
         # Run cleanup
         removed, total_size = cleanup_uploads_once(test_settings, temp_upload_dir)
@@ -153,16 +156,18 @@ class TestUploadCleanerOnce:
 
 
 class TestCleanupTask:
-    async def test_start_cleanup_task_with_valid_settings(self, test_settings: Settings, temp_upload_dir: Path) -> None:
-        task = await start_cleanup_task(test_settings, temp_upload_dir)
+    def test_start_cleanup_task_with_valid_settings(self, test_settings: Settings, temp_upload_dir: Path) -> None:
+        async def runner() -> None:
+            task = await start_cleanup_task(test_settings, temp_upload_dir)
 
-        assert task is not None
-        assert isinstance(task, asyncio.Task)
+            assert task is not None
+            assert isinstance(task, asyncio.Task)
 
-        # Cancel task immediately to avoid hanging
-        await stop_cleanup_task(task)
+            await stop_cleanup_task(task)
 
-    async def test_start_cleanup_task_disabled_interval(self, temp_upload_dir: Path) -> None:
+        asyncio.run(runner())
+
+    def test_start_cleanup_task_disabled_interval(self, temp_upload_dir: Path) -> None:
         settings = Settings(
             upload_clean_interval_seconds=0,  # Disabled
             upload_ttl_days=1,
@@ -170,13 +175,17 @@ class TestCleanupTask:
             upload_max_total_mb=1,
         )
 
-        task = await start_cleanup_task(settings, temp_upload_dir)
+        async def runner() -> None:
+            task = await start_cleanup_task(settings, temp_upload_dir)
+            assert task is None
 
-        assert task is None
+        asyncio.run(runner())
 
-    async def test_stop_cleanup_task_with_none(self) -> None:
-        # Should not raise error
-        await stop_cleanup_task(None)
+    def test_stop_cleanup_task_with_none(self) -> None:
+        async def runner() -> None:
+            await stop_cleanup_task(None)
+
+        asyncio.run(runner())
 
 
 class TestCleanupEdgeCases:
@@ -186,15 +195,28 @@ class TestCleanupEdgeCases:
         file_path.write_text("content")
 
         # Mock stat to raise OSError
-        def mock_stat() -> Any:
-            raise OSError("Permission denied")
+        original_stat = Path.stat
+        call_state = {"count": 0, "error_done": False}
 
-        with patch.object(file_path, 'stat', side_effect=mock_stat):
+        def mock_stat(path_obj: Path, *args: Any, **kwargs: Any):
+            if path_obj == file_path:
+                if not call_state["error_done"]:
+                    call_state["count"] += 1
+                    if call_state["count"] >= 2:
+                        call_state["error_done"] = True
+                        raise OSError("Permission denied")
+            return original_stat(path_obj, *args, **kwargs)
+
+        with patch.object(Path, 'stat', autospec=True) as mock_stat_method:
+            mock_stat_method.side_effect = mock_stat
             # Run cleanup - should not crash
             removed, total_size = cleanup_uploads_once(test_settings, temp_upload_dir)
 
             assert removed == 0
-            assert total_size == 0
+            assert call_state["error_done"]
+
+        assert file_path.exists()
+        assert total_size == file_path.stat().st_size
 
     def test_minimum_interval_enforced(self, temp_upload_dir: Path) -> None:
         settings = Settings(

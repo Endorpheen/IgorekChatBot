@@ -62,7 +62,7 @@ class TestInfraTools:
 
             with patch('requests.post', side_effect=requests.exceptions.ConnectionError()):
                 from app.features.infra.sandbox_tool import run_code_in_sandbox
-                result = run_code_in_sandbox('print("test")')
+                result = run_code_in_sandbox.invoke('print("test")')
 
                 assert "Ошибка: не удалось связаться с сервисом выполнения кода" in result
 
@@ -72,6 +72,6 @@ class TestInfraTools:
 
             with patch('requests.post', side_effect=requests.exceptions.ConnectionError()):
                 from app.features.infra.browser_tool import browse_website
-                result = browse_website("https://example.com")
+                result = browse_website.invoke("https://example.com")
 
                 assert "Ошибка: не удалось связаться с сервисом браузера" in result
