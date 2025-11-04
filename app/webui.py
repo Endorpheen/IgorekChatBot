@@ -14,6 +14,8 @@ def register_webui(app: FastAPI, settings: Settings) -> None:
     if not webui_dir.is_dir():
         return
 
+    webui_root = webui_dir.resolve()
+
     assets_dir = webui_dir / "assets"
     if assets_dir.is_dir():
         app.mount("/web-ui/assets", StaticFiles(directory=str(assets_dir)), name="assets")
@@ -48,7 +50,11 @@ def register_webui(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/web-ui/{path_file}")
     async def serve_root_files(path_file: str):
-        file_path = webui_dir / path_file
-        if file_path.is_file():
+        requested = Path(path_file)
+        if requested.is_absolute() or ".." in requested.parts:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        file_path = (webui_dir / requested).resolve(strict=False)
+        if file_path.is_file() and file_path.is_relative_to(webui_root):
             return FileResponse(file_path)
         raise HTTPException(status_code=404, detail="Not Found")
