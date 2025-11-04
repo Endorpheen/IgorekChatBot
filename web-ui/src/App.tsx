@@ -655,6 +655,7 @@ const AppContent = () => {
                   type="button"
                   className="image-back-button"
                   onClick={() => navigate('/')}
+                  data-testid="back-to-chat"
                 >
                   ← В чат
                 </button>
@@ -687,6 +688,7 @@ const AppContent = () => {
                   type="button"
                   className="image-back-button"
                   onClick={() => navigate('/')}
+                  data-testid="back-to-chat"
                 >
                   ← В чат
                 </button>

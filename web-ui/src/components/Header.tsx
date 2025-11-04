@@ -52,6 +52,7 @@ const Header: React.FC<HeaderProps> = ({
             className="image-gen-button"
             onClick={onNavigateToImages}
             title="Генерация изображений"
+            data-testid="nav-images"
           >
             <ImagePlus className="icon" />
             <span className="desktop-only">Генерация</span>

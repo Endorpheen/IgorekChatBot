@@ -140,6 +140,7 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({
             className="command-button"
             onClick={toggleThreadSortOrder}
             title={threadSortOrder === 'newest-first' ? 'Показать новые треды снизу' : 'Показать новые треды сверху'}
+            data-testid="thread-sort-toggle"
           >
             <ArrowDownWideNarrow className="icon" />
             {threadSortOrder === 'newest-first' ? 'Новые сверху' : 'Новые снизу'}
