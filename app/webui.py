@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,11 +50,15 @@ def register_webui(app: FastAPI, settings: Settings) -> None:
     async def serve_root_files(path_file: str):
         # Normalize and verify path_file to prevent path traversal
         base_dir = webui_dir.resolve()
+        # Reject absolute paths and normalize
+        if os.path.isabs(path_file):
+            raise HTTPException(status_code=404, detail="Not Found")
         try:
             file_path = (webui_dir / path_file).resolve()
         except Exception:
             raise HTTPException(status_code=404, detail="Not Found")
-        if not str(file_path).startswith(str(base_dir)):
+        # Only serve files actually inside base_dir (use commonpath for robustness)
+        if os.path.commonpath([str(base_dir), str(file_path)]) != str(base_dir):
             raise HTTPException(status_code=404, detail="Not Found")
         if file_path.is_file():
             return FileResponse(file_path)
