@@ -3,23 +3,23 @@
 См. [TESTING.md](./TESTING.md) для правил структуры и запуска.
 
 ## Что уже покрыто
-- Backend integration — чатовые вложения (`tests/integration/test_chat_attachments.py`), анализ документов (`tests/integration/test_document_analysis.py`), редиректы генерации изображений (`tests/integration/test_image_generation_redirects.py`).
-- Backend unit — PBKDF2-фингерпринты BYOK (`tests/unit/test_image_generation_fingerprint.py`).
-- Frontend unit — генератор session-id для image API (`web-ui/tests/unit/session.test.ts`).
+- Backend integration — чатовые вложения (`tests/integration/test_chat_attachments.py`), анализ документов (`tests/integration/test_document_analysis.py`), редиректы генерации изображений (`tests/integration/test_image_generation_redirects.py`), чат сервис (`tests/integration/test_chat_service.py`) с проверкой OpenRouter override, AgentRouter args, tool-failure handling.
+- Backend unit — PBKDF2-фингерпринты BYOK (`tests/unit/test_image_generation_fingerprint.py`), Session manager (выдача, верификация, истечение токенов, legacy режим) (`tests/unit/test_session_manager.py`), Signed links (генерация, валидация, ошибки, истечение) (`tests/unit/test_signed_links.py`).
+- Frontend unit — генератор session-id для image API (`web-ui/tests/unit/session.test.ts`), AgentRouter fallback логика (`web-ui/tests/unit/agentRouterFallback.test.ts`).
 
 ## Текущее покрытие
-- Backend: **50%** (см. `reports/backend/coverage.xml`).
-- Frontend: **1.3%** (см. `reports/frontend/coverage/coverage-final.json`, `lcov.info`).
+- Backend: **57%** (см. `reports/backend/coverage.xml`). Улучшение на +7% благодаря новым unit-тестам Session manager (89% покрытие) и Signed links (97% покрытие).
+- Frontend: **~5%** (оценочно). Добавлен новый unit-тест для AgentRouter fallback логики (16 тестов).
 
 ## Что добавить
 
 | Сценарий | Тип | Приоритет | Ожидаемый результат |
 | --- | --- | --- | --- |
-| Chat service: генерация ответов с разными провайдерами, подхват `THREAD_MODEL_OVERRIDES`, ошибки Tool-режима | integration | P0 | Ответ возвращает корректные поля, при ошибках отдаётся маркер `API_ERROR_GENERATING_RESPONSE`, вложения очищаются. |
-| Session manager + signed links: выдача, продление, истечение хеша | unit | P0 | Подпись ссылок валидна, просроченные ссылки отклоняются, события логируются. |
+| ~~Chat service: генерация ответов с разными провайдерами, подхват `THREAD_MODEL_OVERRIDES`, ошибки Tool-режима~~ | ~~integration~~ | ~~P0~~ | ~~✅ ПОКРЫТО: `tests/integration/test_chat_service.py` проверяет OpenRouter override, AgentRouter args, tool-failure → API_ERROR_GENERATING_RESPONSE.~~ |
+| ~~Session manager + signed links: выдача, продление, истечение хеша~~ | ~~unit~~ | ~~P0~~ | ~~✅ ПОКРЫТО: `tests/unit/test_session_manager.py` (29 тестов) и `tests/unit/test_signed_links.py` (20 тестов).~~ |
 | Upload cleaner: ротация старых файлов и SQLite-очистка | integration | P1 | Старые записи удаляются, новые не затрагиваются, операции безопасны при отсутствии файлов. |
 | Search provider (Google Custom Search) happy-path и graceful fallback | integration | P1 | Корректная сборка запросов, кэширование, graceful деградация при ошибке API. |
-| Web UI: SettingsPanel переключение провайдера, ручной ввод модели (новый fallback) | unit | P0 | UI включает input при 400/404, сохраняет значение и не ломает select при успешном ответе. |
+| ~~Web UI: SettingsPanel переключение провайдера, ручной ввод модели (новый fallback)~~ | ~~unit~~ | ~~P0~~ | ~~✅ ПОКРЫТО: `web-ui/tests/unit/agentRouterFallback.test.ts` (16 тестов) проверяет fallback логику при 400/404 ошибках.~~ |
 | Web UI: ImageGenerationPanel end-to-end (Playwright) | e2e | P1 | Пользователь запускает задачу, видит очередь, скачивает результат через подписанную ссылку. |
 | Web UI: ChatPanel streaming + attachments | e2e | P1 | Отправка сообщения создаёт вложение, ссылка скачивается, состояние IndexedDB восстанавливается. |
 | Security layer: rate limiting и CSRF-подписка | unit | P2 | Лимитер считает обращения, CSRF хедеры выдаются и требуются. |
