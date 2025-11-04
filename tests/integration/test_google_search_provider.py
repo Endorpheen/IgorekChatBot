@@ -158,8 +158,7 @@ class TestGoogleSearchProviderErrorHandling:
             mock_get.return_value = mock_response
 
             result = search_provider._execute("test query")
-            # Should handle 403 as general server error
-            assert "вернул ошибку сервера" in result
+            assert "доступ к Google Custom Search запрещен" in result
 
     def test_malformed_response_data(self, search_provider: GoogleSearchProvider) -> None:
         # Response without items field
@@ -210,11 +209,13 @@ class TestGoogleSearchProviderConcurrency:
             for thread in threads:
                 thread.join()
 
-            # All should succeed, but only one should make API call
             assert len(results) == 3
             assert mock_get.call_count == 1
 
-            # All results should be identical
-            first_result = results[0]
-            for result in results[1:]:
-                assert result == first_result
+            reference_results = results[0]["results"]
+            assert all(result["results"] == reference_results for result in results)
+            assert all(result["query"] == "test query" for result in results)
+
+            cached_flags = [result["cached"] for result in results]
+            assert cached_flags.count(False) == 1
+            assert cached_flags.count(True) == len(results) - 1
