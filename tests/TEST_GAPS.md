@@ -5,11 +5,11 @@
 ## Что уже покрыто
 - Backend integration — чатовые вложения (`tests/integration/test_chat_attachments.py`), анализ документов (`tests/integration/test_document_analysis.py`), редиректы генерации изображений (`tests/integration/test_image_generation_redirects.py`), чат сервис (`tests/integration/test_chat_service.py`) с проверкой OpenRouter override, AgentRouter args, tool-failure handling.
 - Backend integration — Upload cleaner (`tests/integration/test_upload_cleaner.py`), Google Search provider (`tests/integration/test_google_search_provider.py`), MCP tools (`tests/integration/test_mcp_tools.py`).
-- Backend unit — PBKDF2-фингерпринты BYOK (`tests/unit/test_image_generation_fingerprint.py`), Session manager (выдача, верификация, истечение токенов, legacy режим) (`tests/unit/test_session_manager.py`), Signed links (генерация, валидация, ошибки, истечение) (`tests/unit/test_signed_links.py`), Rate limiting & CSRF (`tests/unit/test_rate_limiting_csrf.py`).
+- Backend unit — PBKDF2-фингерпринты BYOK (`tests/unit/test_image_generation_fingerprint.py`), Session manager (выдача, верификация, истечение токенов, legacy режим) (`tests/unit/test_session_manager.py`), Signed links (генерация, валидация, ошибки, истечение) (`tests/unit/test_signed_links.py`), Rate limiting & CSRF (`tests/unit/test_rate_limiting_csrf.py`), OpenAI Compatible provider (`tests/unit/test_openai_compatible.py`), MCP router и service (`tests/unit/test_mcp_router.py`, `tests/unit/test_mcp_service_unit.py`), Infrastructure tools (`tests/unit/test_infra_tools.py`), Chat service и attachments (`tests/unit/test_chat_service.py`, `tests/unit/test_chat_attachments.py`), Document analysis router (`tests/unit/test_document_analysis_router.py`), Image analysis service (`tests/unit/test_image_analysis_service.py`), Uploads cleaner (`tests/unit/test_uploads_cleaner.py`), Google search tool (`tests/unit/test_google_tool.py`).
 - Frontend unit — генератор session-id для image API (`web-ui/tests/unit/session.test.ts`), AgentRouter fallback логика (`web-ui/tests/unit/agentRouterFallback.test.ts`).
 
 ## Текущее покрытие
-- Backend: **62%** (см. `reports/backend/coverage.xml`). Улучшение на +12% благодаря новым unit и integration тестам.
+- Backend: **52%** (см. `coverage.xml`). Стабильные 170/170 unit тестов (100% pass rate). Значительное улучшение тестовой базы.
 - Frontend: **~5%** (оценочно). Добавлен новый unit-тест для AgentRouter fallback логики (16 тестов).
 
 ## Что добавить

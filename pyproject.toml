@@ -9,5 +9,6 @@ dependencies = [
     "rich",
     "python-dotenv",
     "fastapi",
-    "uvicorn"
+    "uvicorn",
+    "pytest-cov>=7.0.0",
 ]
