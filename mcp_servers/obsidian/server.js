@@ -437,7 +437,7 @@ app.post("/sse", async (req, res) => {
       case "initialize":
         return ok({
           protocolVersion: "2025-06-18",
-          serverInfo: { name: "mcp-vault", version: "2.1.0" },
+          serverInfo: { name: "mcp-vault", version: "2.2.0" },
           capabilities: { tools: {} },
         });
 
