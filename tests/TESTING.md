@@ -8,7 +8,7 @@ tests/
   integration/         # pytest integration
 web-ui/tests/
   unit/                # Vitest unit
-  e2e/                 # Playwright specs (*.e2e.spec.ts)
+  e2e/                 # Playwright specs (*.e2e.spec.ts) + helpers (`utils.ts`, `fixtures/`)
 reports/
   backend/             # coverage.xml, logs/
   frontend/
@@ -24,7 +24,7 @@ reports/
 
 ## Vitest / Playwright (frontend)
 - Конфигурация: `web-ui/vite.config.ts` задаёт `include` для `tests/unit/**/*.test.ts(x)` и исключает `tests/e2e/**` из Vitest. Coverage записывается в `reports/frontend/coverage/`.
-- Нейминг: unit → `*.test.ts[x]`; e2e → `*.e2e.spec.ts`.
+- Нейминг: unit → `*.test.ts[x]`; e2e → `*.e2e.spec.ts` (для вспомогательных файлов допускаются `utils.ts`, каталог `fixtures/`).
 - Запуск unit: `npm run test:frontend` (проксирует `npm --prefix web-ui run test:unit`).
 - Запуск e2e: `npm run test:e2e` (вызовет `node web-ui/scripts/run-e2e-check.mjs`; если спеки отсутствуют — soft skip, при наличии делегирует `npx playwright test`).
 - Логи: `reports/frontend/logs/unit.log`; coverage: `coverage-final.json`, `lcov.info`, HTML в `reports/frontend/coverage/`.
