@@ -1,14 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { serveStaticApp } from './utils';
 
-const ONE_BY_ONE_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgVKS0dYAAAAASUVORK5CYII=';
-const MOCK_WEBP_BASE64 = 'UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJaQAA3AA/v3AgAA=';
-
 const stagingBase = process.env.PLAYWRIGHT_IMAGE_STAGING_BASE_URL;
 const stagingApiKey = process.env.PLAYWRIGHT_IMAGE_STAGING_API_KEY;
-
-// Мокирование очереди задач
-let jobQueue: { id: string; status: string; progress?: number }[] = [];
 
 test.describe('Генерация изображений', () => {
   test.beforeEach(async ({ page }) => {

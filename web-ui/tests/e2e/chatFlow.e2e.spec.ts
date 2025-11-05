@@ -1,25 +1,5 @@
 import { expect, test } from '@playwright/test';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { serveStaticApp } from './utils';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const fixturesDir = path.resolve(__dirname, 'fixtures');
-
-const attachmentResponse = {
-  status: 'ok',
-  response: 'Документ обработан: готово',
-  attachments: [
-    {
-      filename: 'processed.txt',
-      url: '/downloads/processed.txt',
-      content_type: 'text/plain',
-      size: 32,
-      description: 'Результат обработки',
-    },
-  ],
-};
 
 test.describe('Фронтенд: чат и история', () => {
   test.beforeEach(async ({ page }) => {
