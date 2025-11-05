@@ -12,15 +12,28 @@ pytestmark = pytest.mark.unit
 class TestSandboxTool:
     def test_tool_imports(self) -> None:
         """Test that sandbox tool can be imported and is a StructuredTool"""
+        # Import fresh to avoid module caching issues
+        import importlib
+        import sys
+        if 'app.features.infra.sandbox_tool' in sys.modules:
+            importlib.reload(sys.modules['app.features.infra.sandbox_tool'])
+
         from app.features.infra.sandbox_tool import run_code_in_sandbox
 
         # Verify it's a LangChain StructuredTool
         assert hasattr(run_code_in_sandbox, 'name')
         assert hasattr(run_code_in_sandbox, 'description')
         assert hasattr(run_code_in_sandbox, 'args_schema')
+        assert run_code_in_sandbox.name == 'run_code_in_sandbox'
 
     def test_tool_schema_structure(self) -> None:
         """Test that sandbox tool has proper schema structure"""
+        # Import fresh to avoid module caching issues
+        import importlib
+        import sys
+        if 'app.features.infra.sandbox_tool' in sys.modules:
+            importlib.reload(sys.modules['app.features.infra.sandbox_tool'])
+
         from app.features.infra.sandbox_tool import run_code_in_sandbox
 
         # Test that tool has required attributes
@@ -65,15 +78,28 @@ class TestSandboxTool:
 class TestBrowserTool:
     def test_tool_imports(self) -> None:
         """Test that browser tool can be imported and is a StructuredTool"""
+        # Import fresh to avoid module caching issues
+        import importlib
+        import sys
+        if 'app.features.infra.browser_tool' in sys.modules:
+            importlib.reload(sys.modules['app.features.infra.browser_tool'])
+
         from app.features.infra.browser_tool import browse_website
 
         # Verify it's a LangChain StructuredTool
         assert hasattr(browse_website, 'name')
         assert hasattr(browse_website, 'description')
         assert hasattr(browse_website, 'args_schema')
+        assert browse_website.name == 'browse_website'
 
     def test_tool_schema_structure(self) -> None:
         """Test that browser tool has proper schema structure"""
+        # Import fresh to avoid module caching issues
+        import importlib
+        import sys
+        if 'app.features.infra.browser_tool' in sys.modules:
+            importlib.reload(sys.modules['app.features.infra.browser_tool'])
+
         from app.features.infra.browser_tool import browse_website
 
         # Test that tool has required attributes

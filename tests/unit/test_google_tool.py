@@ -199,6 +199,12 @@ class TestGoogleSearchProvider:
 
     def test_tool_creation(self) -> None:
         """Test LangChain tool creation"""
+        # Import fresh to avoid module caching issues
+        import importlib
+        import sys
+        if 'app.features.search.google_tool' in sys.modules:
+            importlib.reload(sys.modules['app.features.search.google_tool'])
+
         from app.features.search.google_tool import GoogleSearchProvider
         from app.settings import Settings
 
@@ -213,6 +219,7 @@ class TestGoogleSearchProvider:
         assert hasattr(provider._tool, 'name')
         assert hasattr(provider._tool, 'description')
         assert hasattr(provider._tool, 'func')
+        assert provider._tool.name == '_execute'
 
     def test_regex_patterns(self) -> None:
         """Test regex patterns used in query normalization"""

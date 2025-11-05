@@ -61,6 +61,12 @@ class TestInfraTools:
             mock_settings.sandbox_service_url = "http://sandbox:8080"
 
             with patch('requests.post', side_effect=requests.exceptions.ConnectionError()):
+                # Import fresh to ensure we get the StructuredTool version
+                import importlib
+                import sys
+                if 'app.features.infra.sandbox_tool' in sys.modules:
+                    importlib.reload(sys.modules['app.features.infra.sandbox_tool'])
+
                 from app.features.infra.sandbox_tool import run_code_in_sandbox
                 result = run_code_in_sandbox.invoke('print("test")')
 
@@ -71,6 +77,12 @@ class TestInfraTools:
             mock_settings.browser_service_url = "http://browser:8080"
 
             with patch('requests.post', side_effect=requests.exceptions.ConnectionError()):
+                # Import fresh to ensure we get the StructuredTool version
+                import importlib
+                import sys
+                if 'app.features.infra.browser_tool' in sys.modules:
+                    importlib.reload(sys.modules['app.features.infra.browser_tool'])
+
                 from app.features.infra.browser_tool import browse_website
                 result = browse_website.invoke("https://example.com")
 
