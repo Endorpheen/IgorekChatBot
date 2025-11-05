@@ -171,7 +171,7 @@ test.describe('Генерация изображений', () => {
     await page.waitForLoadState('networkidle');
     await page.getByTestId('nav-images').click();
 
-    await page.getByRole('button', { name: 'Настройки' }).click();
+    await page.getByRole('button', { name: 'Настройки' }).first().click();
     await page.getByLabel('API Key').fill(stagingApiKey ?? '');
     await page.getByRole('button', { name: 'Сохранить' }).click();
     await page.waitForTimeout(500);
