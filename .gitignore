@@ -41,8 +41,12 @@ Thumbs.db
 .agent_notes/
 
 # Scripts containing secrets
-.refresh_jwt.sh 
+.refresh_jwt.sh
 refresh_jwt.sh
+
+# Working data directories
+data/
+*.sqlite
 
 # History rewrite artifacts (sensitive)
 replacements.txt
