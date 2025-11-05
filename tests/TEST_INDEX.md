@@ -19,4 +19,7 @@
 | --- | --- | --- |
 | unit | web-ui/tests/unit/session.test.ts | Verifies image session id helper prefers `crypto.randomUUID`, falls back to `crypto.getRandomValues`, and persists deterministic ids. |
 | unit | web-ui/tests/unit/imageAnalysisProvider.test.ts | Ensures image analysis API payloads depend on the active provider and validates configuration hints. |
-| e2e | *(empty)* | Reserve `web-ui/tests/e2e/*.e2e.spec.ts` for Playwright scenarios (none implemented yet). |
+| unit | web-ui/tests/unit/agentRouterFallback.test.ts | Tests SettingsPanel provider switching and manual model input fallback logic on API errors (400/404). |
+| e2e | web-ui/tests/e2e/basic.e2e.spec.ts | Playwright smoke navigation tests for chat sorting and image generation panel basic functionality. |
+| e2e | web-ui/tests/e2e/chatFlow.e2e.spec.ts | Full chat scenarios with API mocking, message sending, and IndexedDB history recovery. |
+| e2e | web-ui/tests/e2e/imageGeneration.e2e.spec.ts | Comprehensive image generation E2E tests with API mocking, validation, error handling, and staging integration. |
