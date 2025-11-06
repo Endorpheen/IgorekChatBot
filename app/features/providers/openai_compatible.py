@@ -63,7 +63,12 @@ async def list_models(
         raise HTTPException(status_code=400, detail={"code": "agentrouter_bad_url", "message": "Некорректный base_url"}) from exc
 
     if parsed.scheme.lower() != "https":
-        raise HTTPException(status_code=400, detail={"code": "agentrouter_insecure", "message": "Допускаются только HTTPS endpoints"})
+        # Allow HTTP providers for localhost development if enabled
+        is_localhost = parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0") or (
+            parsed.hostname and parsed.hostname.startswith("192.168.")
+        )
+        if not (settings.allow_http_providers and is_localhost):
+            raise HTTPException(status_code=400, detail={"code": "agentrouter_insecure", "message": "Допускаются только HTTPS endpoints"})
 
     normalized_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
     allowlist = {item.rstrip("/").lower() for item in settings.allowed_agentrouter_base_urls}

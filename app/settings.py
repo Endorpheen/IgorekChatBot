@@ -40,6 +40,9 @@ class Settings(BaseSettings):
             "https://igorek.end0databox.duckdns.org",
         ]
     )
+    allow_localhost: bool = False  # Enable localhost for development only
+    allow_http_providers: bool = False  # Allow HTTP providers for localhost development only
+    lmstudio_image_mode: str = "auto"  # auto|base64|url - how to send images to LM Studio
     allow_origin_regex: str = r"^https://(igorekchatbot\.ru|igorek\.end0databox\.duckdns\.org)$"
 
     webui_dir: Path = Field(default=Path("/app/web-ui"))
@@ -75,6 +78,34 @@ class Settings(BaseSettings):
     openrouter_api_key: Optional[str] = None
     openrouter_model: str = "openai/gpt-4o-mini"
     max_completion_tokens: int = 4096
+
+    @computed_field
+    def effective_allow_origins(self) -> List[str]:
+        origins = self.allow_origins.copy()
+        if self.allow_localhost:
+            origins.extend([
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:5173",
+                "http://localhost:3010",  # Backend port
+                "http://127.0.0.1:3010",
+            ])
+        return origins
+
+    @computed_field
+    def effective_legacy_session_allowed_origins(self) -> List[str]:
+        origins = self.legacy_session_allowed_origins.copy()
+        if self.allow_localhost:
+            origins.extend([
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:5173",
+                "http://localhost:3010",  # Backend port
+                "http://127.0.0.1:3010",
+            ])
+        return origins
 
     @computed_field
     def max_image_upload_bytes(self) -> int:

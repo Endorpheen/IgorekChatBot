@@ -4,6 +4,7 @@ import base64
 import mimetypes
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 import requests
 from fastapi import HTTPException
@@ -22,6 +23,8 @@ def build_image_conversation(
     system_prompt: str | None,
     image_data_urls: List[str],
     prompt: str | None,
+    provider_base_url: str | None = None,
+    lmstudio_mode: str = "auto",
 ) -> list[dict]:
     base_prompt = system_prompt or "You are a helpful AI assistant. You can analyze images when provided."
     messages = [{"role": "system", "content": base_prompt}]
@@ -82,8 +85,99 @@ def build_image_conversation(
 
     final_content: List[dict] = [{"type": "text", "text": user_prompt}]
 
-    for image_url in image_data_urls:
-        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+    # Determine if we should use base64 format for LM Studio
+    use_base64_format = False
+    logger.info("[IMAGE ANALYSIS] LM Studio mode: %s, provider_base_url: %s", lmstudio_mode, provider_base_url)
+
+    if lmstudio_mode == "base64":
+        use_base64_format = True
+        logger.info("[IMAGE ANALYSIS] Forced base64 mode enabled")
+    elif lmstudio_mode == "auto" and provider_base_url:
+        # Auto-detect LM Studio by port 8010 or common LM Studio patterns
+        parsed = urlparse(provider_base_url)
+        is_lmstudio = (
+            ":8010" in provider_base_url or
+            parsed.port == 8010 or
+            "192.168.0.155" in parsed.hostname or
+            parsed.hostname and parsed.hostname.startswith("192.168.")
+        )
+        use_base64_format = is_lmstudio
+        logger.info("[IMAGE ANALYSIS] Auto-detected LM Studio: %s, use_base64: %s", is_lmstudio, use_base64_format)
+    else:
+        logger.info("[IMAGE ANALYSIS] Base64 conversion disabled")
+
+    logger.info("[IMAGE ANALYSIS] Processing %d image URLs", len(image_data_urls))
+    for i, image_url in enumerate(image_data_urls):
+        logger.info("[IMAGE ANALYSIS] Processing image %d: %s", i, image_url)
+        if use_base64_format:
+            # Convert to base64 for LM Studio
+            logger.info("[IMAGE ANALYSIS] Converting image to base64...")
+            try:
+                if image_url.startswith("http"):
+                    # Handle external URLs - download and convert
+                    response = requests.get(image_url, timeout=10)
+                    if response.ok:
+                        mime_type = response.headers.get('content-type', 'image/jpeg')
+                        encoded = base64.b64encode(response.content).decode('utf-8')
+                        base64_url = f"data:{mime_type};base64,{encoded}"
+                        final_content.append({"type": "image_url", "image_url": {"url": base64_url}})
+                    else:
+                        logger.warning("[IMAGE ANALYSIS] Failed to download image for base64 conversion: %s", response.status_code)
+                        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                elif image_url.startswith("data:"):
+                    # Already base64 encoded - ensure proper format for LM Studio
+                    logger.info("[IMAGE ANALYSIS] Processing existing data URL for LM Studio")
+                    # LM Studio might need specific format - ensure it's clean
+                    # Some providers expect the data URL to be clean and properly formatted
+                    if "data:image/" in image_url and ";base64," in image_url:
+                        # Extract and re-encode to ensure clean format
+                        try:
+                            # Extract the base64 part
+                            header, base64_data = image_url.split(";", 1)
+                            mime_type = header.split(":")[1]
+                            clean_base64 = base64_data.replace("base64,", "")
+
+                            # Reconstruct clean data URL
+                            clean_data_url = f"data:{mime_type};base64,{clean_base64}"
+                            logger.info("[IMAGE ANALYSIS] Cleaned data URL format for LM Studio")
+                            final_content.append({"type": "image_url", "image_url": {"url": clean_data_url}})
+                        except Exception as exc:
+                            logger.warning("[IMAGE ANALYSIS] Error cleaning data URL: %s", exc)
+                            # Fall back to original
+                            final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                    else:
+                        # Use as-is if format is unexpected
+                        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                else:
+                    # Handle local file URLs or relative paths
+                    if image_url.startswith("/uploads/") or "uploads/" in image_url:
+                        logger.info("[IMAGE ANALYSIS] Detected local file URL: %s", image_url)
+                        # Extract filename from URL and convert local file
+                        filename = image_url.split("/")[-1].split("?")[0]  # Remove query params
+                        file_path = upload_dir / filename
+                        logger.info("[IMAGE ANALYSIS] Looking for file: %s", file_path)
+                        if file_path.exists():
+                            logger.info("[IMAGE ANALYSIS] File found, converting to base64...")
+                            mime_type = mimetypes.guess_type(file_path.name)[0] or "image/jpeg"
+                            with open(file_path, "rb") as f:
+                                encoded = base64.b64encode(f.read()).decode('utf-8')
+                                base64_url = f"data:{mime_type};base64,{encoded}"
+                                logger.info("[IMAGE ANALYSIS] Successfully converted to base64, length: %d", len(encoded))
+                                final_content.append({"type": "image_url", "image_url": {"url": base64_url}})
+                        else:
+                            logger.warning("[IMAGE ANALYSIS] Local file not found: %s", file_path)
+                            final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                    else:
+                        logger.info("[IMAGE ANALYSIS] Unknown format, using as-is: %s", image_url)
+                        # Unknown format - use as-is
+                        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+            except Exception as exc:
+                logger.warning("[IMAGE ANALYSIS] Error converting image to base64: %s", exc)
+                final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+        else:
+            logger.info("[IMAGE ANALYSIS] Base64 disabled, using original URL: %s", image_url)
+            # Use original URL format
+            final_content.append({"type": "image_url", "image_url": {"url": image_url}})
 
     messages.append({"role": "user", "content": final_content})
     return messages
