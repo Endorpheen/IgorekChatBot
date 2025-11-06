@@ -25,18 +25,18 @@ class TestLMStudioImageSupport:
             thread_id="test-thread",
             history_limit=5,
             system_prompt=None,
-            image_data_urls=["http://localhost:3010/uploads/test.jpg"],
+            image_data_urls=["data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A8A"],
             prompt="Test prompt",
             provider_base_url="http://192.168.0.155:8010/v1",
             lmstudio_mode="auto",
         )
 
-        # Should convert URL to base64 format
+        # Should process data URL format
         user_message = result[-1]
         assert user_message["role"] == "user"
         assert len(user_message["content"]) > 1  # text + image
 
-        # Check if image content is base64 format
+        # Check if image content is data URL format (already base64)
         image_content = user_message["content"][1]
         assert image_content["type"] == "image_url"
         assert "data:image/" in image_content["image_url"]["url"]
@@ -51,13 +51,13 @@ class TestLMStudioImageSupport:
             thread_id="test-thread",
             history_limit=5,
             system_prompt=None,
-            image_data_urls=["http://localhost:3010/uploads/test.jpg"],
+            image_data_urls=["data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A8A"],
             prompt="Test prompt",
             provider_base_url="http://192.168.1.100:8010/v1",
             lmstudio_mode="auto",
         )
 
-        # Should convert URL to base64 format
+        # Should process data URL format
         user_message = result[-1]
         image_content = user_message["content"][1]
         assert "data:image/" in image_content["image_url"]["url"]
@@ -71,13 +71,13 @@ class TestLMStudioImageSupport:
             thread_id="test-thread",
             history_limit=5,
             system_prompt=None,
-            image_data_urls=["http://localhost:3010/uploads/test.jpg"],
+            image_data_urls=["data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A8A"],
             prompt="Test prompt",
             provider_base_url="https://api.openai.com/v1",
             lmstudio_mode="base64",
         )
 
-        # Should convert URL to base64 even for non-LM Studio providers
+        # Should process data URL format even for non-LM Studio providers
         user_message = result[-1]
         image_content = user_message["content"][1]
         assert "data:image/" in image_content["image_url"]["url"]
