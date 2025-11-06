@@ -168,8 +168,7 @@ async def analyze_image_endpoint(
             raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint некорректен") from exc
         if parsed.scheme.lower() != "https":
             # Allow HTTP providers for localhost development if enabled
-            from app.settings import get_settings
-            settings = get_settings()
+            # Use existing settings from module scope
             is_localhost = parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0") or (
                 parsed.hostname and parsed.hostname.startswith("192.168.")
             )
