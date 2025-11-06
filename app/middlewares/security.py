@@ -16,7 +16,7 @@ def _require_csrf_token(request: Request) -> None:
     origin = request.headers.get("Origin")
     if origin:
         settings = get_settings()
-        if origin.rstrip("/") not in {host.rstrip("/") for host in settings.allow_origins}:
+        if origin.rstrip("/") not in {host.rstrip("/") for host in settings.effective_allow_origins}:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недопустимый источник запроса")
 
 

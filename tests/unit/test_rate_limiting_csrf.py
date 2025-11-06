@@ -133,7 +133,10 @@ class TestCSRFProtection:
     def test_valid_origin_allows_request(self, mock_get_settings: Mock) -> None:
         from app.middlewares.security import _require_csrf_token
 
-        mock_get_settings.return_value.allow_origins = ["https://example.com"]
+        mock_settings = Mock()
+        mock_settings.effective_allow_origins = ["https://example.com"]
+        mock_get_settings.return_value = mock_settings
+
         mock_request = Mock(spec=Request)
         mock_request.cookies = {"csrf-token": "valid-token"}
         mock_request.headers = {"X-CSRF-Token": "valid-token", "Origin": "https://example.com"}
@@ -145,7 +148,10 @@ class TestCSRFProtection:
     def test_invalid_origin_blocks_request(self, mock_get_settings: Mock) -> None:
         from app.middlewares.security import _require_csrf_token
 
-        mock_get_settings.return_value.allow_origins = ["https://example.com"]
+        mock_settings = Mock()
+        mock_settings.effective_allow_origins = ["https://example.com"]
+        mock_get_settings.return_value = mock_settings
+
         mock_request = Mock(spec=Request)
         mock_request.cookies = {"csrf-token": "valid-token"}
         mock_request.headers = {"X-CSRF-Token": "valid-token", "Origin": "https://evil.com"}

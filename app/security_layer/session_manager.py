@@ -182,6 +182,6 @@ def get_session_manager() -> SessionManager:
             cookie_name=settings.session_cookie_name,
             header_name=settings.session_header_name,
             legacy_enabled=settings.legacy_session_compat_enabled,
-            legacy_origins=settings.legacy_session_allowed_origins,
+            legacy_origins=settings.effective_legacy_session_allowed_origins,
         )
     return _session_manager
