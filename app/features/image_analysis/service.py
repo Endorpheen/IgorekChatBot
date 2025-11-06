@@ -4,6 +4,7 @@ import base64
 import mimetypes
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 import requests
 from fastapi import HTTPException
@@ -22,6 +23,8 @@ def build_image_conversation(
     system_prompt: str | None,
     image_data_urls: List[str],
     prompt: str | None,
+    provider_base_url: str | None = None,
+    lmstudio_mode: str = "auto",
 ) -> list[dict]:
     base_prompt = system_prompt or "You are a helpful AI assistant. You can analyze images when provided."
     messages = [{"role": "system", "content": base_prompt}]
@@ -82,8 +85,40 @@ def build_image_conversation(
 
     final_content: List[dict] = [{"type": "text", "text": user_prompt}]
 
+    # Determine if we should use base64 format for LM Studio
+    use_base64_format = False
+    if lmstudio_mode == "base64":
+        use_base64_format = True
+    elif lmstudio_mode == "auto" and provider_base_url:
+        # Auto-detect LM Studio by port 8010 or common LM Studio patterns
+        parsed = urlparse(provider_base_url)
+        is_lmstudio = (
+            ":8010" in provider_base_url or
+            parsed.port == 8010 or
+            "192.168.0.155" in parsed.hostname or
+            parsed.hostname and parsed.hostname.startswith("192.168.")
+        )
+        use_base64_format = is_lmstudio
+
     for image_url in image_data_urls:
-        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+        if use_base64_format and image_url.startswith("http"):
+            # Convert URL to base64 for LM Studio
+            try:
+                response = requests.get(image_url, timeout=10)
+                if response.ok:
+                    mime_type = response.headers.get('content-type', 'image/jpeg')
+                    encoded = base64.b64encode(response.content).decode('utf-8')
+                    base64_url = f"data:{mime_type};base64,{encoded}"
+                    final_content.append({"type": "image_url", "image_url": {"url": base64_url}})
+                else:
+                    logger.warning("[IMAGE ANALYSIS] Failed to download image for base64 conversion: %s", response.status_code)
+                    final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+            except Exception as exc:
+                logger.warning("[IMAGE ANALYSIS] Error converting image to base64: %s", exc)
+                final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+        else:
+            # Use original URL format
+            final_content.append({"type": "image_url", "image_url": {"url": image_url}})
 
     messages.append({"role": "user", "content": final_content})
     return messages

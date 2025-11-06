@@ -202,6 +202,8 @@ async def analyze_image_endpoint(
         system_prompt=system_prompt,
         image_data_urls=encoded_images,
         prompt=message,
+        provider_base_url=base_url if provider == "agentrouter" else None,
+        lmstudio_mode=settings.lmstudio_image_mode,
     )
 
     try:

@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     )
     allow_localhost: bool = False  # Enable localhost for development only
     allow_http_providers: bool = False  # Allow HTTP providers for localhost development only
+    lmstudio_image_mode: str = "auto"  # auto|base64|url - how to send images to LM Studio
     allow_origin_regex: str = r"^https://(igorekchatbot\.ru|igorek\.end0databox\.duckdns\.org)$"
 
     webui_dir: Path = Field(default=Path("/app/web-ui"))
