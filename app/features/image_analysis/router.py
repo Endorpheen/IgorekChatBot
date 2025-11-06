@@ -167,7 +167,14 @@ async def analyze_image_endpoint(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint некорректен") from exc
         if parsed.scheme.lower() != "https":
-            raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint должен использовать HTTPS")
+            # Allow HTTP providers for localhost development if enabled
+            from app.settings import get_settings
+            settings = get_settings()
+            is_localhost = parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0") or (
+                parsed.hostname and parsed.hostname.startswith("192.168.")
+            )
+            if not (settings.allow_http_providers and is_localhost):
+                raise HTTPException(status_code=400, detail="OpenAI Compatible endpoint должен использовать HTTPS")
         normalized_origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
         allowlist = {item.rstrip("/").lower() for item in settings.allowed_agentrouter_base_urls}
         if allowlist and normalized_origin not in allowlist:
