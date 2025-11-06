@@ -125,8 +125,29 @@ def build_image_conversation(
                         logger.warning("[IMAGE ANALYSIS] Failed to download image for base64 conversion: %s", response.status_code)
                         final_content.append({"type": "image_url", "image_url": {"url": image_url}})
                 elif image_url.startswith("data:"):
-                    # Already base64 encoded - use as-is
-                    final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                    # Already base64 encoded - ensure proper format for LM Studio
+                    logger.info("[IMAGE ANALYSIS] Processing existing data URL for LM Studio")
+                    # LM Studio might need specific format - ensure it's clean
+                    # Some providers expect the data URL to be clean and properly formatted
+                    if "data:image/" in image_url and ";base64," in image_url:
+                        # Extract and re-encode to ensure clean format
+                        try:
+                            # Extract the base64 part
+                            header, base64_data = image_url.split(";", 1)
+                            mime_type = header.split(":")[1]
+                            clean_base64 = base64_data.replace("base64,", "")
+
+                            # Reconstruct clean data URL
+                            clean_data_url = f"data:{mime_type};base64,{clean_base64}"
+                            logger.info("[IMAGE ANALYSIS] Cleaned data URL format for LM Studio")
+                            final_content.append({"type": "image_url", "image_url": {"url": clean_data_url}})
+                        except Exception as exc:
+                            logger.warning("[IMAGE ANALYSIS] Error cleaning data URL: %s", exc)
+                            # Fall back to original
+                            final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                    else:
+                        # Use as-is if format is unexpected
+                        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
                 else:
                     # Handle local file URLs or relative paths
                     if image_url.startswith("/uploads/") or "uploads/" in image_url:
