@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import mimetypes
 import re
@@ -11,6 +12,7 @@ from uuid import uuid4
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
 from app.features.chat.service import THREAD_MODEL_OVERRIDES
@@ -30,6 +32,45 @@ logger = get_logger()
 settings = get_settings()
 
 upload_dir = ensure_upload_directory(settings.upload_dir_path)
+
+
+def convert_webp_to_png_or_jpeg(file_bytes: bytes, content_type: str) -> tuple[bytes, str]:
+    """Convert WebP images to PNG or JPEG format for LM Studio compatibility."""
+    try:
+        # Check if it's WebP format
+        if not content_type or content_type.lower() not in ["image/webp"]:
+            return file_bytes, content_type
+
+        logger.info("[IMAGE ANALYSIS] Converting WebP to PNG/JPEG for LM Studio")
+
+        # Open WebP image
+        with Image.open(io.BytesIO(file_bytes)) as img:
+            # Convert to RGB if necessary (for JPEG)
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+
+            # Prefer PNG for quality, fallback to JPEG for compatibility
+            try:
+                # Try PNG first (lossless, better quality)
+                output = io.BytesIO()
+                img.save(output, format="PNG", optimize=True)
+                converted_bytes = output.getvalue()
+                output.close()
+                logger.info("[IMAGE ANALYSIS] WebP converted to PNG successfully")
+                return converted_bytes, "image/png"
+            except Exception:
+                # Fallback to JPEG
+                output = io.BytesIO()
+                img.save(output, format="JPEG", quality=95, optimize=True)
+                converted_bytes = output.getvalue()
+                output.close()
+                logger.info("[IMAGE ANALYSIS] WebP converted to JPEG (PNG fallback failed)")
+                return converted_bytes, "image/jpeg"
+
+    except Exception as exc:
+        logger.warning("[IMAGE ANALYSIS] Failed to convert WebP image: %s", exc)
+        # Return original if conversion fails
+        return file_bytes, content_type
 
 
 class ImagePayload(BaseModel):
@@ -131,6 +172,24 @@ async def analyze_image_endpoint(
             raise HTTPException(status_code=500, detail="Не удалось прочитать файл изображения") from exc
         finally:
             await upload.close()
+
+        # Convert WebP to PNG/JPEG if using LM Studio
+        if (provider == "agentrouter" and
+            settings.lmstudio_image_mode in ["base64", "auto"] and
+            upload.content_type and upload.content_type.lower() == "image/webp"):
+
+            logger.info("[IMAGE ANALYSIS] Detected WebP upload with LM Studio - converting")
+            file_bytes, upload.content_type = convert_webp_to_png_or_jpeg(file_bytes, upload.content_type)
+
+            # Update file extension to match converted format
+            if upload.content_type == "image/png":
+                ext = ".png"
+            elif upload.content_type == "image/jpeg":
+                ext = ".jpg"
+
+            # Update unique_name with new extension
+            unique_name = f"{datetime.utcnow():%Y%m%d%H%M%S}_{uuid4().hex[:8]}_{stem}{ext}"
+            file_path = upload_dir / unique_name
 
         try:
             with open(file_path, "wb") as destination:
