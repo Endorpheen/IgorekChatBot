@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, mock_open
 from app.features.image_analysis.service import build_image_conversation
 
 
@@ -144,6 +144,34 @@ class TestLMStudioImageSupport:
         user_message = result[-1]
         image_content = user_message["content"][1]
         assert image_content["image_url"]["url"] == base64_url
+
+    def test_local_file_base64_conversion(self, mock_settings: Mock) -> None:
+        """Test conversion of local uploaded files to base64"""
+        mock_settings.lmstudio_image_mode = "auto"
+
+        # Create a temporary test image file
+        test_image_data = b"fake_image_data_for_testing"
+
+        with patch('pathlib.Path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=test_image_data)), \
+             patch('mimetypes.guess_type', return_value=('image/jpeg', None)):
+
+            result = build_image_conversation(
+                history=[],
+                thread_id="test-thread",
+                history_limit=5,
+                system_prompt=None,
+                image_data_urls=["/uploads/test_image.jpg"],
+                prompt="Test prompt",
+                provider_base_url="http://192.168.0.155:8010/v1",
+                lmstudio_mode="auto",
+            )
+
+            # Should convert local file to base64
+            user_message = result[-1]
+            image_content = user_message["content"][1]
+            assert "data:image/jpeg;base64," in image_content["image_url"]["url"]
+            assert "ZmFrZV9pbWFnZV9kYXRhX2Zvcl90ZXN0aW5n" in image_content["image_url"]["url"]  # base64 of test data
 
     @patch('app.features.image_analysis.service.requests.get')
     def test_base64_conversion_error_handling(self, mock_get: Mock, mock_settings: Mock) -> None:

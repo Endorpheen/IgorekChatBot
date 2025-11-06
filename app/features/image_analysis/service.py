@@ -101,18 +101,41 @@ def build_image_conversation(
         use_base64_format = is_lmstudio
 
     for image_url in image_data_urls:
-        if use_base64_format and image_url.startswith("http"):
-            # Convert URL to base64 for LM Studio
+        if use_base64_format:
+            # Convert to base64 for LM Studio
             try:
-                response = requests.get(image_url, timeout=10)
-                if response.ok:
-                    mime_type = response.headers.get('content-type', 'image/jpeg')
-                    encoded = base64.b64encode(response.content).decode('utf-8')
-                    base64_url = f"data:{mime_type};base64,{encoded}"
-                    final_content.append({"type": "image_url", "image_url": {"url": base64_url}})
-                else:
-                    logger.warning("[IMAGE ANALYSIS] Failed to download image for base64 conversion: %s", response.status_code)
+                if image_url.startswith("http"):
+                    # Handle external URLs - download and convert
+                    response = requests.get(image_url, timeout=10)
+                    if response.ok:
+                        mime_type = response.headers.get('content-type', 'image/jpeg')
+                        encoded = base64.b64encode(response.content).decode('utf-8')
+                        base64_url = f"data:{mime_type};base64,{encoded}"
+                        final_content.append({"type": "image_url", "image_url": {"url": base64_url}})
+                    else:
+                        logger.warning("[IMAGE ANALYSIS] Failed to download image for base64 conversion: %s", response.status_code)
+                        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                elif image_url.startswith("data:"):
+                    # Already base64 encoded - use as-is
                     final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                else:
+                    # Handle local file URLs or relative paths
+                    if image_url.startswith("/uploads/") or "uploads/" in image_url:
+                        # Extract filename from URL and convert local file
+                        filename = image_url.split("/")[-1].split("?")[0]  # Remove query params
+                        file_path = upload_dir / filename
+                        if file_path.exists():
+                            mime_type = mimetypes.guess_type(file_path.name)[0] or "image/jpeg"
+                            with open(file_path, "rb") as f:
+                                encoded = base64.b64encode(f.read()).decode('utf-8')
+                                base64_url = f"data:{mime_type};base64,{encoded}"
+                                final_content.append({"type": "image_url", "image_url": {"url": base64_url}})
+                        else:
+                            logger.warning("[IMAGE ANALYSIS] Local file not found: %s", file_path)
+                            final_content.append({"type": "image_url", "image_url": {"url": image_url}})
+                    else:
+                        # Unknown format - use as-is
+                        final_content.append({"type": "image_url", "image_url": {"url": image_url}})
             except Exception as exc:
                 logger.warning("[IMAGE ANALYSIS] Error converting image to base64: %s", exc)
                 final_content.append({"type": "image_url", "image_url": {"url": image_url}})
