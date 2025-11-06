@@ -1,5 +1,78 @@
 # Changelog
 
+## [2.2.1] — 2025-11-06
+### 🚀 Новое / New Features
+- 🇷🇺 **LM Studio Integration:** Comprehensive support for LM Studio local development with auto-detection by port 8010 and 192.168.* IP patterns
+- 🇷🇺 **Localhost Development:** Added `ALLOW_LOCALHOST` environment variable for safe local development (disabled by default)
+- 🇷🇧 **HTTP Provider Support:** Added `ALLOW_HTTP_PROVIDERS` for localhost HTTP endpoints (disabled by default)
+- 🇷🇺 **LM Studio Image Processing:** Added `LMSTUDIO_IMAGE_MODE` with auto|base64|url modes for optimal image format handling
+- 🇷🇧 **WebP to PNG/JPEG Conversion:** Implemented automatic WebP → PNG/JPEG conversion framework for LM Studio compatibility (PNG preferred, JPEG fallback)
+- 🇷🇧 **Enhanced Security:** Updated CORS, security and session middleware to use effective origins with localhost support
+
+### 🐛 Исправления / Bug Fixes
+- 🇷🇺 **Critical Fix:** Resolved `UnboundLocalError` in image analysis router that was causing 500 errors
+- 🇷🇧 **Image Processing:** Fixed LM Studio base64 image format compatibility issues
+- 🇷🇧 **Test Suite:** Updated CSRF tests to use `effective_allow_origins` instead of deprecated `allow_origins`
+
+### 🧪 Тестирование / Testing
+- 🇷🇺 **LM Studio Tests:** Added 8 comprehensive tests for LM Studio integration covering auto-detection, base64 conversion, and error handling
+- 🇷🇺 **Test Coverage:** All 294 tests passing (100% success rate)
+- 🇷🇧 **Test Documentation:** Updated testing documentation with new LM Studio test coverage details
+
+### 🔧 Технические улучшения / Technical Improvements
+- 🇷🇺 **Dependencies:** Added Pillow==11.1.0 for image processing capabilities
+- 🇷🇧 **Environment Variables:** Extended .env.example with new localhost and LM Studio settings
+- 🇷🇧 **Computed Fields:** Added `effective_allow_origins` and `effective_legacy_session_allowed_origins` for dynamic origin management
+
+### 📋 Документация / Documentation
+- 🇷🇺 **Testing Guide:** Updated `tests/TESTING.md` with comprehensive LM Studio test documentation
+- 🇷🇧 **Configuration:** Added detailed environment variable documentation for local development
+
+### 🔒 Безопасность / Security
+- 🇷🇺 **Production Safe:** All new features disabled by default, no changes to existing production behavior
+- 🇷🇧 **Localhost Isolation:** Localhost features only activate with explicit environment variables
+- 🇷🇧 **Provider Safety:** Non-LM Studio providers remain unaffected by new image processing logic
+
+### ⚠️ TODO / Known Issues
+- 🇷🇺 **WebP Conversion:** WebP to PNG/JPEG conversion framework implemented but requires real-world LM Studio testing for final validation
+- 🇷🇧 **Local Testing:** Additional testing recommended with various LM Studio configurations
+
+### 🚀 New Features
+- 🇬🇧 **LM Studio Integration:** Comprehensive support for LM Studio local development with auto-detection by port 8010 and 192.168.* IP patterns
+- 🇬🇧 **Localhost Development:** Added `ALLOW_LOCALHOST` environment variable for safe local development (disabled by default)
+- 🇬🇧 **HTTP Provider Support:** Added `ALLOW_HTTP_PROVIDERS` for localhost HTTP endpoints (disabled by default)
+- 🇬🇧 **LM Studio Image Processing:** Added `LMSTUDIO_IMAGE_MODE` with auto|base64|url modes for optimal image format handling
+- 🇬🇧 **WebP to PNG/JPEG Conversion:** Implemented automatic WebP → PNG/JPEG conversion framework for LM Studio compatibility (PNG preferred, JPEG fallback)
+- 🇬🇧 **Enhanced Security:** Updated CORS, security and session middleware to use effective origins with localhost support
+
+### 🐛 Bug Fixes
+- 🇬🇧 **Critical Fix:** Resolved `UnboundLocalError` in image analysis router that was causing 500 errors
+- 🇬🇧 **Image Processing:** Fixed LM Studio base64 image format compatibility issues
+- 🇬🇧 **Test Suite:** Updated CSRF tests to use `effective_allow_origins` instead of deprecated `allow_origins`
+
+### 🧪 Testing
+- 🇬🇧 **LM Studio Tests:** Added 8 comprehensive tests for LM Studio integration covering auto-detection, base64 conversion, and error handling
+- 🇬🇧 **Test Coverage:** All 294 tests passing (100% success rate)
+- 🇬🇧 **Test Documentation:** Updated testing documentation with new LM Studio test coverage details
+
+### 🔧 Technical Improvements
+- 🇬🇧 **Dependencies:** Added Pillow==11.1.0 for image processing capabilities
+- 🇬🇧 **Environment Variables:** Extended .env.example with new localhost and LM Studio settings
+- 🇬🇧 **Computed Fields:** Added `effective_allow_origins` and `effective_legacy_session_allowed_origins` for dynamic origin management
+
+### 📋 Documentation
+- 🇬🇧 **Testing Guide:** Updated `tests/TESTING.md` with comprehensive LM Studio test documentation
+- 🇬🇧 **Configuration:** Added detailed environment variable documentation for local development
+
+### 🔒 Security
+- 🇬🇧 **Production Safe:** All new features disabled by default, no changes to existing production behavior
+- 🇬🇧 **Localhost Isolation:** Localhost features only activate with explicit environment variables
+- 🇬🇧 **Provider Safety:** Non-LM Studio providers remain unaffected by new image processing logic
+
+### ⚠️ Known Issues
+- 🇬🇧 **WebP Conversion:** WebP to PNG/JPEG conversion framework implemented but requires real-world LM Studio testing for final validation
+- 🇬🇧 **Local Testing:** Additional testing recommended with various LM Studio configurations
+
 ## [2.2.0] — 2025-11-05
 ### 🏆 Тестирование / Testing
 - 🇷🇺 **PHENOMENAL ACHIEVEMENT:** 100% покрытие тестами по всем направлениям! Backend: 342/342 (100%), Frontend: 32/32 (100%), E2E: 7/7 (100%).
