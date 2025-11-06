@@ -20,7 +20,7 @@ const Footer: React.FC<FooterProps> = ({ openSettings, voiceAssistantEnabled, to
             CODE ORCHESTRATION by <span className="accent">end0</span>
           </div>
           <div>
-            <span className="version">V2.2.0</span>
+            <span className="version">V2.2.1</span>
           </div>
         </div>
         <a
