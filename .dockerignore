@@ -66,3 +66,24 @@ README.md
 # Logs
 *.log
 logs/
+
+# Data and uploads
+uploads/
+data/
+storage/
+db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Test artifacts
+coverage/
+reports/
+test-results/
+.nyc_output/
+.c8_output/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
