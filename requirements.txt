@@ -100,7 +100,7 @@ langchain==0.3.27
     #   langchain-community
 langchain-community==0.3.30
     # via -r requirements.in
-langchain-core==0.3.76
+langchain-core==0.3.80
     # via
     #   -r requirements.in
     #   langchain
